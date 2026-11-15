@@ -1,0 +1,693 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#2B2B2E">
+<title>Планка</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap">
+<style>
+/* Layout: dark sidebar + dark board area; light status columns with a colored cap; white task cards. Single deliberate look. */
+:root{
+  color-scheme:dark;
+  --chrome:#2B2B2E; --chrome-2:#1F1F22; --chrome-line:#3A3A3E; --chrome-hover:#38383C; --chrome-sel:#55555B;
+  --chrome-fg:#EDEDEF; --chrome-muted:#9B9BA2;
+  --col-bg:#ECEEF2; --card:#FFFFFF; --card-line:#E1E4EA; --ink:#2C3038; --ink-muted:#8B919C;
+  --chip:#F2F3F6; --chip-line:#E2E5EA; --link:#3B7BE8; --done:#3EBF6C; --danger:#E0533F; --danger-soft:#FDE7E3; --warn:#E59A1F;
+  --f-body:"Roboto",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-mono:ui-monospace,Menlo,monospace;
+}
+html,body{height:100%}
+body{margin:0}
+.card{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.touch-ghost{position:fixed;left:0;top:0;z-index:90;pointer-events:none;box-shadow:0 12px 30px rgba(0,0,0,.35);opacity:.95}
+[hidden]{display:none!important}
+body{background:var(--chrome-2);color:var(--chrome-fg);font-family:var(--f-body);font-size:14px;line-height:1.4;overflow:hidden}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;background:none;border:0;padding:0}
+button:disabled{opacity:.4;cursor:default}
+:focus-visible{outline:2px solid var(--link);outline-offset:2px;border-radius:6px}
+.app{display:grid;grid-template-columns:270px minmax(0,1fr);height:100%}
+
+/* sidebar */
+.side{background:var(--chrome);border-right:1px solid var(--chrome-line);display:flex;flex-direction:column;min-height:0;padding-block:16px 14px;padding-left:max(10px,env(safe-area-inset-left,0px));padding-right:10px;gap:6px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:500;font-size:15px;padding:6px 12px 12px}
+.brand i{width:24px;height:24px;border-radius:50%;background:var(--link);display:inline-grid;place-items:center;font-style:normal;font-size:11px;font-weight:700;color:#fff}
+.side-label{display:flex;align-items:center;gap:10px;padding:8px 12px;font-size:15px}
+.side-label .ibtn{margin-left:auto}
+.plist{display:flex;flex-direction:column;gap:2px;overflow-y:auto;min-height:0;flex:1}
+.pitem{display:flex;align-items:center;gap:10px;padding:8px 12px 8px 42px;border-radius:8px;text-align:left;width:100%;font-size:15px}
+.pitem:hover{background:var(--chrome-hover)}
+.pitem.on{background:var(--chrome-sel)}
+.pitem .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pitem .ct{font-size:12px;color:var(--chrome-muted);font-variant-numeric:tabular-nums}
+.pitem.on .ct{color:var(--chrome-fg)}
+.store-note{font-size:12px;color:var(--chrome-muted);padding:8px 12px 0;border-top:1px solid var(--chrome-line);display:flex;gap:8px;align-items:flex-start}
+.store-note::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--done);margin-top:5px;flex:none}
+.store-note.local::before{background:var(--warn)}
+
+/* main */
+.main{display:flex;flex-direction:column;min-width:0;min-height:0}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--chrome);padding-block:14px;padding-left:24px;padding-right:max(16px,env(safe-area-inset-right,0px));border-bottom:1px solid var(--chrome-line)}
+.ptitle{display:flex;align-items:center;gap:6px;min-width:0}
+.ptitle h1{font-weight:500;font-size:17px;margin:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.search{display:flex;align-items:center;gap:8px;background:var(--chrome-2);border:1px solid var(--chrome-line);border-radius:8px;padding:7px 12px;width:270px;max-width:100%;color:var(--chrome-muted)}
+.search input{border:0;background:none;outline:none;width:100%;min-width:0;color:var(--chrome-fg)}
+.search input::placeholder{color:var(--chrome-muted)}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding-block:14px 12px;padding-left:24px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+.tb-group{display:flex;align-items:center;gap:4px;background:var(--col-bg);color:var(--ink);border-radius:8px;padding:4px}
+.tb-item{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:13px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.tb-item.on{background:var(--card);color:var(--link);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+.bar{width:90px;height:5px;border-radius:3px;background:var(--card-line);overflow:hidden}
+.bar b{display:block;height:100%;background:var(--done);border-radius:3px;transition:width .3s}
+.ibtn{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;color:var(--chrome-muted)}
+.ibtn:hover{background:var(--chrome-hover);color:var(--chrome-fg)}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:8px;font-weight:500;border:1px solid var(--card-line);background:var(--card);color:var(--ink)}
+.btn:hover{border-color:var(--ink-muted)}
+.btn.primary{background:var(--link);color:#fff;border-color:var(--link)}
+.btn.danger{color:var(--danger);border-color:transparent;background:var(--danger-soft)}
+.btn.ghost{border-color:transparent;background:none;color:var(--ink-muted)}
+.btn.ghost:hover{color:var(--ink);background:var(--chip)}
+
+.board{flex:1;min-height:0;overflow-x:auto;overflow-y:hidden;display:flex;gap:10px;align-items:flex-start;padding-block:0 16px;padding-left:24px;padding-right:max(16px,env(safe-area-inset-right,0px))}
+.col{flex:0 0 340px;max-height:100%;display:flex;flex-direction:column;background:var(--col-bg);border-radius:12px;min-height:0;color:var(--ink);color-scheme:light;border-top:6px solid var(--c);overflow:hidden}
+.col-h{background:color-mix(in srgb,var(--c) 14%,var(--col-bg));padding:14px 10px 10px 18px;display:flex;flex-direction:column;gap:6px}
+.col-h .r1{display:flex;align-items:center;gap:8px}
+.col-h h2{font-size:19px;font-weight:500;margin:0;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.col-n{font-size:12px;color:var(--ink-muted);font-variant-numeric:tabular-nums}
+.col .ibtn{color:var(--ink-muted)}
+.col .ibtn:hover{background:rgba(0,0,0,.06);color:var(--ink)}
+.add-task{display:inline-flex;align-items:center;gap:6px;color:var(--link);font-size:16px;align-self:flex-start;padding:2px 0}
+.add-task:hover{text-decoration:underline}
+.cards{display:flex;flex-direction:column;gap:8px;padding:10px 10px 12px;overflow-y:auto;min-height:40px}
+.card{background:var(--card);border:1px solid var(--card-line);border-radius:10px;padding:12px 10px 12px 12px;cursor:pointer;display:flex;flex-direction:column;gap:10px;box-shadow:0 1px 2px rgba(20,25,35,.06)}
+.card:hover{box-shadow:0 3px 10px rgba(20,25,35,.12)}
+.card.dragging{opacity:.35}
+.card .r1{display:flex;align-items:flex-start;gap:8px}
+.ck{width:18px;height:18px;border-radius:50%;border:1.5px solid #C5CAD3;flex:none;margin-top:1px;display:inline-grid;place-items:center;color:#fff}
+.ck:hover{border-color:var(--done)}
+.ck.on{background:var(--done);border-color:var(--done)}
+.card .ttl{flex:1;min-width:0;font-size:15px;color:var(--ink);overflow-wrap:anywhere}
+.card.is-done .ttl{color:var(--ink-muted)}
+.card .ibtn{width:22px;height:22px;margin-top:-1px}
+.meta{display:flex;flex-wrap:wrap;gap:6px;align-items:center;padding-left:26px;font-size:12px;color:var(--ink-muted)}
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 8px;border-radius:6px;background:var(--chip);border:1px solid var(--chip-line);font-variant-numeric:tabular-nums}
+.chip.over{color:var(--danger);border-color:#F6C3BA;background:var(--danger-soft)}
+.num{font-family:var(--f-mono);font-size:11px}
+.prio i{display:inline-flex;gap:1.5px;align-items:flex-end;height:10px}
+.prio i b{width:3px;border-radius:1px;background:#C9CED6}
+.prio i b:nth-child(1){height:4px}.prio i b:nth-child(2){height:7px}.prio i b:nth-child(3){height:10px}
+.prio.p1 i b:nth-child(-n+1),.prio.p2 i b:nth-child(-n+2),.prio.p3 i b{background:var(--warn)}
+.prio.p4 i b{background:var(--danger)}
+.prio.p4{color:var(--danger);font-weight:500}
+.drop-ph{height:4px;border-radius:2px;background:var(--link);margin:-2px 0}
+.qa{display:flex;flex-direction:column;gap:6px}
+.qa textarea{width:100%;resize:none;border:1px solid var(--link);border-radius:10px;padding:10px 12px;background:var(--card);outline:none;min-height:60px;color:var(--ink)}
+.qa .row{display:flex;gap:6px}
+.col-add{flex:0 0 230px;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;border-radius:10px;background:var(--col-bg);color:var(--ink);font-weight:500;font-size:15px}
+.col-add:hover{background:#fff}
+
+/* empty + loading */
+.empty{margin:auto;max-width:440px;text-align:center;padding:40px 16px;display:flex;flex-direction:column;align-items:center;gap:12px}
+.empty h2{font-weight:500;font-size:20px;margin:0;text-wrap:balance}
+.empty p{color:var(--chrome-muted);margin:0}
+.ghostboard{display:flex;gap:8px;margin-bottom:8px}
+.ghostboard div{width:58px;border-radius:8px;background:var(--chrome);border-top:4px solid var(--c);display:flex;flex-direction:column;gap:4px;padding:5px}
+.ghostboard span{height:10px;border-radius:3px;background:var(--chrome-sel)}
+
+/* popover + modal (light, like the columns) */
+.scrim{position:fixed;inset:0;background:rgba(0,0,0,.55);display:flex;align-items:flex-start;justify-content:center;padding:max(5vh,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) 16px max(16px,env(safe-area-inset-left,0px));z-index:50;overflow-y:auto}
+.modal{background:var(--card);color:var(--ink);color-scheme:light;border-radius:14px;width:100%;max-width:640px;box-shadow:0 20px 60px rgba(0,0,0,.4);display:flex;flex-direction:column}
+.modal.sm{max-width:420px}
+.modal .ibtn,.pop .ibtn{color:var(--ink-muted)}
+.modal .ibtn:hover,.pop .ibtn:hover{background:var(--chip);color:var(--ink)}
+.m-head{display:flex;align-items:center;gap:8px;padding:12px 12px 0 18px}
+.m-head h2{font-weight:500;font-size:17px;margin:0;flex:1}
+.m-body{padding:10px 18px 18px;display:flex;flex-direction:column;gap:16px}
+.m-title{width:100%;border:0;background:none;resize:none;font-weight:500;font-size:20px;line-height:1.3;outline:none;padding:4px 0;overflow:hidden;color:var(--ink)}
+.m-title:focus{box-shadow:0 2px 0 var(--link)}
+.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label,.sec-l{font-size:12px;color:var(--ink-muted)}
+.inp{width:100%;border:1px solid var(--card-line);background:var(--chip);border-radius:8px;padding:7px 9px;outline:none;min-width:0;color:var(--ink)}
+.inp:focus{border-color:var(--link);background:var(--card)}
+textarea.inp{resize:vertical;min-height:96px}
+.keychip{font-family:var(--f-mono);font-size:11px;padding:2px 6px;border-radius:5px;background:var(--chip);border:1px solid var(--chip-line);color:var(--ink-muted)}
+.chk{display:flex;flex-direction:column;gap:2px}
+.chk-row{display:flex;align-items:center;gap:8px;padding:4px;border-radius:6px}
+.chk-row:hover{background:var(--chip)}
+.chk-row input[type=checkbox]{accent-color:var(--done);width:16px;height:16px;flex:none}
+.chk-row .txt{flex:1;min-width:0;border:0;background:none;outline:none;padding:2px 0;color:var(--ink)}
+.chk-row.dn .txt{text-decoration:line-through;color:var(--ink-muted)}
+.chk-row .ibtn{width:24px;height:24px;opacity:0}
+.chk-row:hover .ibtn,.chk-row .ibtn:focus-visible{opacity:1}
+.sec-h{display:flex;justify-content:space-between;align-items:center}
+.m-foot{display:flex;align-items:center;gap:8px;justify-content:space-between;padding:12px 18px;border-top:1px solid var(--card-line);color:var(--ink-muted);font-size:12px;flex-wrap:wrap}
+.swatches{display:flex;gap:6px;flex-wrap:wrap}
+.sw{width:22px;height:22px;border-radius:6px;background:var(--c);border:2px solid transparent}
+.sw.on{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--c)}
+.tpls{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.tpl{border:1px solid var(--card-line);border-radius:10px;padding:10px;text-align:left;display:flex;flex-direction:column;gap:6px}
+.tpl.on{border-color:var(--link);background:#EEF4FE}
+.tpl small{color:var(--ink-muted);font-size:12px}
+.pop{position:fixed;z-index:60;background:var(--card);color:var(--ink);color-scheme:light;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);padding:10px;width:250px;display:flex;flex-direction:column;gap:8px}
+.pop .mi{display:flex;align-items:center;gap:8px;padding:7px 8px;border-radius:7px;text-align:left;width:100%}
+.pop .mi:hover:not(:disabled){background:var(--chip)}
+.pop .mi.red{color:var(--danger)}
+.pop hr{border:0;border-top:1px solid var(--card-line);margin:2px 0}
+.toggle{display:flex;align-items:center;gap:8px;padding:6px 8px;font-size:13px;cursor:pointer}
+.toggle input{accent-color:var(--done)}
+.confirm{background:var(--danger-soft);border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;font-size:13px;color:var(--ink)}
+.confirm .row{display:flex;gap:6px;justify-content:flex-end}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:10px;font-size:13px;z-index:80;max-width:calc(100% - 32px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
+.banner{margin:0 24px 10px;padding:8px 12px;border-radius:8px;background:var(--danger-soft);color:var(--danger);font-size:13px}
+
+@media (max-width:760px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
+  .side{border-right:0;border-bottom:1px solid var(--chrome-line);padding-block:8px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-left:max(16px,env(safe-area-inset-left,0px));flex-direction:row;align-items:center}
+  .brand,.store-note,.side-label .lbl{display:none}
+  .side-label{padding:0;order:2}
+  .plist{flex-direction:row;overflow-x:auto;overflow-y:hidden;gap:6px;flex:1}
+  .pitem{width:auto;flex:none;padding:6px 12px;font-size:14px}
+  .pitem .nm{max-width:140px}
+  .top,.toolbar,.board{padding-left:max(16px,env(safe-area-inset-left,0px))}
+  .col{flex-basis:84vw;max-width:340px}
+  .search{width:100%}
+  .fields{grid-template-columns:1fr 1fr}
+  .banner{margin-inline:16px}
+  input,select,textarea{font-size:16px!important}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="side" id="side"></aside>
+  <main class="main" id="main"></main>
+</div>
+
+<script>
+/* ---------- helpers ---------- */
+const $ = (s, r = document) => r.querySelector(s);
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === 'class') el.className = v;
+    else if (k === 'style') el.style.cssText = v;
+    else if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2), v);
+    else if (k === 'value') el.value = v;
+    else if (k === 'checked') el.checked = !!v;
+    else el.setAttribute(k, v === true ? '' : v);
+  }
+  for (const c of kids.flat(Infinity)) { if (c == null || c === false) continue; el.append(c.nodeType ? c : document.createTextNode(String(c))); }
+  return el;
+}
+const svg = (d, s = 16) => { const w = document.createElement('span'); w.style.display = 'inline-flex'; w.innerHTML = `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`; return w; };
+const IC = {
+  folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>', dotsV: '<circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/>',
+  board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>', plusCircle: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>', dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>', search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/>', gear: '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1Z"/>',
+  cal: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/>', check: '<path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/>',
+  text: '<path d="M4 6h16M4 12h16M4 18h10"/>', left: '<path d="m15 18-6-6 6-6"/>', right: '<path d="m9 18 6-6-6-6"/>', trash: '<path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/>', edit: '<path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/>'
+};
+const finePointer = matchMedia('(pointer:fine)').matches;
+const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
+const COLORS = ['#B4BED3', '#F2A65A', '#F2CF4A', '#4CC3BE', '#6E9CF2', '#A889E8', '#EF7B7B', '#7CC77F'];
+const PRIOS = [['Нет', 0], ['Низкий', 1], ['Средний', 2], ['Высокий', 3], ['Срочно', 4]];
+const TEMPLATES = {
+  dev: { name: 'Разработка', cols: [['backlog', '#B4BED3'], ['в работу', '#F2A65A'], ['в работе', '#F2CF4A'], ['на проверке', '#A889E8'], ['готово', '#4CC3BE', true]] },
+  simple: { name: 'Простой', cols: [['в работу', '#F2A65A'], ['в работе', '#F2CF4A'], ['готово', '#4CC3BE', true]] }
+};
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const fmtDate = s => new Date(s + 'T00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
+function plural(n, a, b, c) { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c; }
+const ls = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch {} } };
+let toastT;
+function toast(msg) { document.querySelectorAll('.toast').forEach(t => t.remove()); const t = h('div', { class: 'toast', role: 'status' }, msg); document.body.append(t); clearTimeout(toastT); toastT = setTimeout(() => t.remove(), 3500); }
+
+/* ---------- Telegram ---------- */
+const tg = window.Telegram && window.Telegram.WebApp;
+const inTg = !!(tg && tg.initData);
+if (inTg) {
+  try { tg.ready(); tg.expand(); } catch {}
+  try { tg.setHeaderColor('#2B2B2E'); tg.setBackgroundColor('#1F1F22'); } catch {}
+  try { if (tg.isVersionAtLeast('7.7')) tg.disableVerticalSwipes(); } catch {}
+}
+const haptic = () => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch {} };
+
+/* ---------- store: Telegram CloudStorage inside Telegram, browser storage outside ---------- */
+const LS_KEY = 'planka-local-v1';
+const MAX_VAL = 4096;
+const cloud = inTg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') ? tg.CloudStorage : null;
+const cs = (method, ...args) => new Promise((res, rej) => { try { cloud[method](...args, (err, v) => err ? rej(err) : res(v)); } catch (e) { rej(e); } });
+const ckey = (kind, id) => (kind === 'projects' ? 'p_' : 't_') + id;
+
+const store = {
+  mode: 'loading', ready: false, banner: '',
+  projects: new Map(), tasks: new Map(), pending: new Map(), running: new Set(),
+  async init() {
+    this.loadLocal();
+    this.mode = cloud ? 'tg' : 'local';
+    this.ready = true; render();
+    if (!cloud) return;
+    await this.pull(true);
+    tg.onEvent && tg.onEvent('activated', () => this.pull(false));
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.pull(false); });
+  },
+  async pull(first) {
+    if (this.running.size || this.pending.size) return; // don't overwrite edits still being saved
+    try {
+      const keys = (await cs('getKeys')).filter(k => /^[pt]_/.test(k));
+      const vals = {};
+      for (let i = 0; i < keys.length; i += 50) Object.assign(vals, await cs('getItems', keys.slice(i, i + 50)));
+      const projects = new Map(), tasks = new Map();
+      for (const [k, v] of Object.entries(vals)) {
+        if (!v) continue;
+        try { const o = JSON.parse(v); (k[0] === 'p' ? projects : tasks).set(o.id, o); } catch {}
+      }
+      if (first && !projects.size && this.projects.size) {
+        // cloud is empty but this device has tasks: upload them
+        for (const p of this.projects.values()) this.write('projects', p);
+        for (const t of this.tasks.values()) this.write('tasks', t);
+      } else {
+        this.projects = projects; this.tasks = tasks; this.saveLocal();
+      }
+      this.banner = ''; render();
+    } catch (e) {
+      this.banner = 'Не удалось загрузить задачи из облака Telegram. Показаны данные, сохранённые на этом устройстве.'; render();
+    }
+  },
+  loadLocal() {
+    try { const raw = JSON.parse(ls.get(LS_KEY) || '{}'); this.projects = new Map((raw.projects || []).map(p => [p.id, p])); this.tasks = new Map((raw.tasks || []).map(t => [t.id, t])); } catch {}
+  },
+  saveLocal() { ls.set(LS_KEY, JSON.stringify({ projects: [...this.projects.values()], tasks: [...this.tasks.values()] })); },
+  write(kind, obj, del) {
+    const id = obj.id;
+    if (del) this[kind].delete(id); else this[kind].set(id, obj);
+    render(); this.saveLocal();
+    if (this.mode !== 'tg') return;
+    const key = ckey(kind, id);
+    const val = del ? null : JSON.stringify(obj);
+    if (val && val.length > MAX_VAL) { toast('Задача слишком большая для облака Telegram (лимит 4096 символов). Сократите описание или чек-лист.'); return; }
+    this.pending.set(key, val);
+    if (this.running.has(key)) return;
+    this.running.add(key);
+    (async () => {
+      while (this.pending.has(key)) {
+        const v = this.pending.get(key); this.pending.delete(key);
+        try { if (v) await cs('setItem', key, v); else await cs('removeItem', key); }
+        catch (e) { toast(String(e).includes('KEYS_TOO_MUCH') || String(e).includes('QUOTA') ? 'Облако Telegram заполнено (до 1024 записей). Удалите старые задачи.' : 'Изменение не сохранилось в облаке. Проверьте интернет.'); }
+      }
+      this.running.delete(key);
+    })();
+  },
+  saveProject(p) { this.write('projects', p); },
+  saveTask(t) { t.updatedAt = Date.now(); this.write('tasks', t); },
+  delTask(t) { this.write('tasks', t, true); },
+  delProject(p) { for (const t of this.tasksOf(p.id)) this.delTask(t); this.write('projects', p, true); },
+  projectList() { return [...this.projects.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); },
+  tasksOf(pid) { return [...this.tasks.values()].filter(t => t.projectId === pid); }
+};
+
+/* ---------- ui state ---------- */
+const ui = { pid: ls.get('planka-pid'), q: '', quickAdd: null, openTask: null };
+function curProject() {
+  const list = store.projectList();
+  let p = list.find(p => p.id === ui.pid);
+  if (!p && list.length) { p = list[0]; ui.pid = p.id; }
+  return p || null;
+}
+function selectProject(id) { ui.pid = id; ui.q = ''; ui.quickAdd = null; ls.set('planka-pid', id); render(); }
+
+/* ---------- render ---------- */
+function render() { renderSide(); renderMain(); if (ui.openTask) refreshTaskModal(); }
+
+function renderSide() {
+  const side = $('#side'); const p = curProject();
+  const list = store.projectList();
+  side.replaceChildren(
+    h('div', { class: 'brand' }, h('i', null, 'П'), 'Планка'),
+    h('div', { class: 'side-label' }, svg(IC.folder, 18), h('span', { class: 'lbl' }, 'Мои проекты'),
+      h('button', { class: 'ibtn', title: 'Новый проект', 'aria-label': 'Новый проект', onclick: openNewProject }, svg(IC.plus, 18))),
+    h('nav', { class: 'plist', 'aria-label': 'Проекты' }, list.map(pr => {
+      const cols = new Set((pr.columns || []).filter(c => c.done).map(c => c.id));
+      const open = store.tasksOf(pr.id).filter(t => !cols.has(t.columnId)).length;
+      const on = p && pr.id === p.id;
+      return h('button', { class: 'pitem' + (on ? ' on' : ''), onclick: () => selectProject(pr.id), 'aria-current': on ? 'page' : null },
+        h('span', { class: 'nm' }, pr.name), h('span', { class: 'ct', title: 'Открытых задач' }, open || ''));
+    })),
+    store.mode === 'loading' ? null : h('div', { class: 'store-note' + (store.mode === 'local' ? ' local' : '') },
+      store.mode === 'tg' ? 'Сохраняется в облаке Telegram: задачи видны на всех ваших устройствах.' : 'Открыто вне Telegram: задачи сохраняются только в этом браузере.')
+  );
+}
+
+function renderMain() {
+  const main = $('#main');
+  const scrollX = $('.board', main)?.scrollLeft || 0;
+  const colScroll = {}; main.querySelectorAll('.cards').forEach(c => colScroll[c.dataset.col] = c.scrollTop);
+  const focusedQA = document.activeElement && document.activeElement.id === 'qa-input' ? document.activeElement.value : null;
+  const p = curProject();
+  if (!store.ready) { main.replaceChildren(h('div', { class: 'empty' }, h('p', null, 'Загружаю доску…'))); return; }
+  if (!p) {
+    main.replaceChildren(store.banner ? h('div', { class: 'banner', style: 'margin-top:16px' }, store.banner) : null, h('div', { class: 'empty' },
+      h('div', { class: 'ghostboard', 'aria-hidden': 'true' }, [[3, COLORS[0]], [2, COLORS[1]], [1, COLORS[3]]].map(([n, c]) => h('div', { style: `--c:${c}` }, Array.from({ length: n }, () => h('span'))))),
+      h('h2', null, 'Создайте первый проект'),
+      h('p', null, 'В проекте будут колонки по статусам: backlog, в работу, в работе, готово. Задачи перетаскиваются между колонками.'),
+      h('button', { class: 'btn primary', onclick: openNewProject }, svg(IC.plus), 'Новый проект')));
+    return;
+  }
+  const tasks = store.tasksOf(p.id);
+  const doneCols = new Set(p.columns.filter(c => c.done).map(c => c.id));
+  const doneN = tasks.filter(t => doneCols.has(t.columnId)).length;
+  const q = ui.q.trim().toLowerCase();
+  const match = t => !q || (t.title || '').toLowerCase().includes(q) || (t.desc || '').toLowerCase().includes(q) || `${p.key}-${t.num}`.toLowerCase().includes(q);
+
+  const top = h('div', { class: 'top' },
+    h('div', { class: 'ptitle' }, h('h1', null, `Проект «${p.name}»`),
+      h('button', { class: 'ibtn', title: 'Настройки проекта', 'aria-label': 'Настройки проекта', onclick: () => openProjectSettings(p) }, svg(IC.dotsV, 18))),
+    h('label', { class: 'search' }, svg(IC.search, 16), h('input', { id: 'search', type: 'search', placeholder: 'Поиск', value: ui.q, 'aria-label': 'Поиск по задачам', oninput: e => { ui.q = e.target.value; renderMain(); $('#search').focus(); } }))
+  );
+  const pct = tasks.length ? doneN / tasks.length * 100 : 0;
+  const toolbar = h('div', { class: 'toolbar' },
+    h('div', { class: 'tb-group' }, h('span', { class: 'tb-item on' }, svg(IC.board, 15), 'Доска')),
+    h('div', { class: 'tb-group' },
+      h('span', { class: 'tb-item' }, h('span', { class: 'bar', role: 'progressbar', 'aria-valuenow': Math.round(pct), 'aria-valuemin': 0, 'aria-valuemax': 100 }, h('b', { style: `width:${pct}%` })), `Готово ${doneN} из ${tasks.length}`),
+      h('span', { class: 'tb-item' }, svg(IC.cal, 14), `Просрочено ${tasks.filter(t => t.due && !doneCols.has(t.columnId) && t.due < todayStr()).length}`)));
+
+  const board = h('div', { class: 'board' });
+  p.columns.forEach((col, ci) => {
+    const colTasks = tasks.filter(t => t.columnId === col.id).sort((a, b) => a.order - b.order);
+    const shown = colTasks.filter(match);
+    const cards = h('div', { class: 'cards', 'data-col': col.id, ondragover: e => onDragOver(e, cards), ondragleave: e => { if (!cards.contains(e.relatedTarget)) removePh(); }, ondrop: e => onDrop(e, p, col.id) },
+      ui.quickAdd === col.id ? quickAddBox(p, col.id, focusedQA) : null,
+      shown.map(t => taskCard(t, p, doneCols.has(t.columnId))));
+    board.append(h('section', { class: 'col', style: `--c:${col.color}`, 'aria-label': col.name },
+      h('header', { class: 'col-h' },
+        h('div', { class: 'r1' }, h('h2', null, col.name), h('span', { class: 'col-n', title: col.done ? 'Задачи здесь считаются выполненными' : 'Задач в колонке' }, (col.done ? '✓ ' : '') + (q ? `${shown.length}/${colTasks.length}` : colTasks.length)),
+          h('button', { class: 'ibtn', 'aria-label': `Меню колонки «${col.name}»`, onclick: e => openColMenu(e.currentTarget, p, ci) }, svg(IC.dotsV, 18))),
+        h('button', { class: 'add-task', onclick: () => { ui.quickAdd = col.id; renderMain(); $('#qa-input')?.focus(); } }, svg(IC.plus, 17), 'Добавить задачу')),
+      cards));
+  });
+  board.append(h('button', { class: 'col-add', onclick: () => addColumn(p) }, svg(IC.plusCircle, 18), 'Создать колонку'));
+
+  main.replaceChildren(top, toolbar, store.banner ? h('div', { class: 'banner' }, store.banner) : null, board);
+  board.scrollLeft = scrollX;
+  main.querySelectorAll('.cards').forEach(c => { if (colScroll[c.dataset.col]) c.scrollTop = colScroll[c.dataset.col]; });
+  if (focusedQA !== null) { const i = $('#qa-input'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
+}
+
+function toggleDone(t, p) {
+  const isDone = p.columns.find(c => c.id === t.columnId)?.done;
+  const target = isDone ? (p.columns.find(c => c.id === t.prevColumnId && !c.done) || p.columns.find(c => !c.done)) : p.columns.find(c => c.done);
+  if (!target) { toast('Отметьте одну из колонок как «Задачи здесь выполнены» в её меню.'); return; }
+  const inCol = store.tasksOf(p.id).filter(x => x.columnId === target.id);
+  store.saveTask({ ...t, prevColumnId: t.columnId, columnId: target.id, order: inCol.reduce((m, x) => Math.min(m, x.order || 0), 1000) - 1000 });
+}
+
+function taskCard(t, p, isDone) {
+  const total = (t.checklist || []).length, dn = (t.checklist || []).filter(c => c.done).length;
+  const over = t.due && !isDone && t.due < todayStr();
+  return h('div', { class: 'card' + (isDone ? ' is-done' : ''), draggable: finePointer ? 'true' : null, tabindex: '0', role: 'button', 'data-id': t.id,
+    onclick: () => { if (Date.now() - suppressClickAt > 600) openTask(t.id); }, onkeydown: e => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); openTask(t.id); } },
+    ondragstart: e => { dragId = t.id; e.dataTransfer.effectAllowed = 'move'; try { e.dataTransfer.setData('text/plain', t.id); } catch {} requestAnimationFrame(() => e.target.classList.add('dragging')); },
+    ondragend: e => { e.target.classList.remove('dragging'); removePh(); dragId = null; } },
+    h('div', { class: 'r1' },
+      h('button', { class: 'ck' + (isDone ? ' on' : ''), 'aria-label': isDone ? 'Вернуть в работу' : 'Отметить выполненной', title: isDone ? 'Вернуть в работу' : 'Выполнено', onclick: e => { e.stopPropagation(); toggleDone(t, p); } }, isDone ? svg('<path d="M5 12.5l4.5 4.5L19 7.5"/>', 12) : null),
+      h('div', { class: 'ttl' }, t.title),
+      h('button', { class: 'ibtn', 'aria-label': 'Открыть задачу', onclick: e => { e.stopPropagation(); openTask(t.id); } }, svg(IC.dotsV, 16))),
+    h('div', { class: 'meta' },
+      h('span', { class: 'chip num' }, `${p.key}-${t.num}`),
+      t.priority ? h('span', { class: 'chip prio p' + t.priority, title: 'Приоритет' }, h('i', null, h('b'), h('b'), h('b')), PRIOS[t.priority][0]) : null,
+      t.due ? h('span', { class: 'chip' + (over ? ' over' : ''), title: 'Срок' }, svg(IC.cal, 13), fmtDate(t.due)) : null,
+      total ? h('span', { class: 'chip', title: 'Чек-лист' }, svg(IC.check, 13), `${dn}/${total}`) : null,
+      t.desc ? h('span', { class: 'chip', title: 'Есть описание' }, svg(IC.text, 13)) : null));
+}
+
+function quickAddBox(p, colId, val) {
+  const submit = () => {
+    const ta = $('#qa-input'); const title = ta.value.trim(); if (!title) return;
+    createTask(p, colId, title); ta.value = ''; ta.focus();
+  };
+  return h('div', { class: 'qa' },
+    h('textarea', { id: 'qa-input', rows: 2, placeholder: 'Название задачи. Enter — добавить, Esc — закрыть', value: val || '', 'aria-label': 'Название новой задачи',
+      onkeydown: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); submit(); } if (e.key === 'Escape') { ui.quickAdd = null; renderMain(); } } }),
+    h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: submit }, 'Добавить'), h('button', { class: 'btn ghost', onclick: () => { ui.quickAdd = null; renderMain(); } }, 'Отмена')));
+}
+
+function createTask(p, colId, title) {
+  const tasks = store.tasksOf(p.id);
+  const num = tasks.reduce((m, t) => Math.max(m, t.num || 0), p.lastNum || 0) + 1;
+  const inCol = tasks.filter(t => t.columnId === colId);
+  const order = inCol.reduce((m, t) => Math.min(m, t.order || 0), 1000) - 1000;
+  store.saveTask({ id: uid(), projectId: p.id, columnId: colId, num, title, desc: '', priority: 0, due: '', checklist: [], order, createdAt: Date.now() });
+  store.saveProject({ ...store.projects.get(p.id), lastNum: num });
+}
+
+/* ---------- drag and drop ---------- */
+let dragId = null, ph = null;
+function removePh() { ph?.remove(); ph = null; }
+function onDragOver(e, cards) {
+  if (!dragId) return; e.preventDefault(); e.dataTransfer.dropEffect = 'move';
+  if (!ph) ph = h('div', { class: 'drop-ph' });
+  const items = [...cards.querySelectorAll('.card:not(.dragging)')];
+  const before = items.find(c => { const r = c.getBoundingClientRect(); return e.clientY < r.top + r.height / 2; });
+  if (before) { if (ph.nextSibling !== before) cards.insertBefore(ph, before); } else if (cards.lastChild !== ph) cards.append(ph);
+}
+function onDrop(e, p, colId) { e.preventDefault(); finishDrop(p, colId); }
+function finishDrop(p, colId) {
+  if (!dragId || !ph || !p) { removePh(); return; }
+  const sib = (el, dir) => { while (el && (!el.classList.contains('card') || el.classList.contains('dragging'))) el = el[dir]; return el; };
+  const prev = sib(ph.previousElementSibling, 'previousElementSibling'), next = sib(ph.nextElementSibling, 'nextElementSibling');
+  removePh();
+  const po = prev ? store.tasks.get(prev.dataset.id)?.order : null, no = next ? store.tasks.get(next.dataset.id)?.order : null;
+  const order = po != null && no != null ? (po + no) / 2 : po != null ? po + 1000 : no != null ? no - 1000 : 1000;
+  const t = store.tasks.get(dragId); dragId = null;
+  if (t && (t.columnId !== colId || t.order !== order)) store.saveTask({ ...t, columnId: colId, order });
+}
+
+/* ---------- touch drag (phones): hold a card, then move it ---------- */
+let touchTimer = null, touchStart = null, tDrag = null, suppressClickAt = 0;
+function placePh(cards, y) {
+  if (!ph) ph = h('div', { class: 'drop-ph' });
+  const items = [...cards.querySelectorAll('.card:not(.dragging)')];
+  const before = items.find(c => { const r = c.getBoundingClientRect(); return y < r.top + r.height / 2; });
+  if (before) { if (ph.nextSibling !== before) cards.insertBefore(ph, before); } else if (cards.lastChild !== ph) cards.append(ph);
+}
+function startTouchDrag(card, x, y) {
+  touchTimer = null;
+  const r = card.getBoundingClientRect();
+  const ghost = card.cloneNode(true);
+  ghost.className = 'card touch-ghost';
+  ghost.style.width = r.width + 'px';
+  document.body.append(ghost);
+  tDrag = { id: card.dataset.id, ghost, dx: x - r.left, dy: y - r.top };
+  card.classList.add('dragging');
+  haptic(); moveTouchDrag(x, y);
+}
+function moveTouchDrag(x, y) {
+  tDrag.ghost.style.transform = `translate(${x - tDrag.dx}px,${y - tDrag.dy}px) rotate(2deg)`;
+  const el = document.elementFromPoint(x, y);
+  const col = el && el.closest('.col');
+  const cards = col && col.querySelector('.cards');
+  if (cards) placePh(cards, y);
+  const board = $('.board');
+  if (board) { if (x < 40) board.scrollLeft -= 14; else if (x > innerWidth - 40) board.scrollLeft += 14; }
+  if (cards) { const cr = cards.getBoundingClientRect(); if (y < cr.top + 40) cards.scrollTop -= 10; else if (y > cr.bottom - 40) cards.scrollTop += 10; }
+}
+function endTouchDrag(cancel) {
+  clearTimeout(touchTimer); touchTimer = null;
+  if (!tDrag) return;
+  const { id, ghost } = tDrag; tDrag = null; ghost.remove();
+  suppressClickAt = Date.now();
+  document.querySelectorAll('.card.dragging').forEach(c => c.classList.remove('dragging'));
+  const cards = ph && ph.parentElement;
+  if (cancel || !cards) { removePh(); return; }
+  dragId = id;
+  finishDrop(curProject(), cards.dataset.col);
+}
+document.addEventListener('touchstart', e => {
+  const card = e.target.closest && e.target.closest('.card');
+  if (!card || e.target.closest('button') || e.touches.length > 1) return;
+  const t = e.touches[0]; touchStart = { x: t.clientX, y: t.clientY };
+  clearTimeout(touchTimer);
+  touchTimer = setTimeout(() => startTouchDrag(card, touchStart.x, touchStart.y), 380);
+}, { passive: true });
+document.addEventListener('touchmove', e => {
+  const t = e.touches[0];
+  if (tDrag) { e.preventDefault(); moveTouchDrag(t.clientX, t.clientY); return; }
+  if (touchTimer && Math.hypot(t.clientX - touchStart.x, t.clientY - touchStart.y) > 8) { clearTimeout(touchTimer); touchTimer = null; }
+}, { passive: false });
+document.addEventListener('touchend', () => endTouchDrag(false));
+document.addEventListener('touchcancel', () => endTouchDrag(true));
+
+/* ---------- columns ---------- */
+function addColumn(p) {
+  const col = { id: uid(), name: 'Новая колонка', color: COLORS[p.columns.length % COLORS.length], done: false };
+  store.saveProject({ ...p, columns: [...p.columns, col] });
+  requestAnimationFrame(() => { const b = $('.board'); b.scrollLeft = b.scrollWidth; const btns = document.querySelectorAll('.col-h .ibtn'); const last = btns[btns.length - 1]; if (last) openColMenu(last, store.projects.get(p.id), p.columns.length, true); });
+}
+let popEl = null;
+function closePop() { popEl?.remove(); popEl = null; document.removeEventListener('mousedown', popAway, true); }
+function popAway(e) { if (popEl && !popEl.contains(e.target)) closePop(); }
+function openPop(anchor, content) {
+  closePop();
+  popEl = h('div', { class: 'pop', role: 'dialog', onkeydown: e => { if (e.key === 'Escape') { closePop(); anchor.focus(); } } }, content);
+  document.body.append(popEl);
+  const r = anchor.getBoundingClientRect(); const w = popEl.offsetWidth, hh = popEl.offsetHeight;
+  popEl.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, r.right - w)) + 'px';
+  popEl.style.top = Math.max(8, Math.min(window.innerHeight - hh - 8, r.bottom + 6)) + 'px';
+  setTimeout(() => document.addEventListener('mousedown', popAway, true));
+}
+function openColMenu(anchor, p, ci, focusName) {
+  const col = p.columns[ci];
+  const upd = patch => { const cur = store.projects.get(p.id); const cols = cur.columns.map((c, i) => i === ci ? { ...c, ...patch } : c); store.saveProject({ ...cur, columns: cols }); };
+  const move = d => { const cur = store.projects.get(p.id); const cols = [...cur.columns]; const j = ci + d; if (j < 0 || j >= cols.length) return; [cols[ci], cols[j]] = [cols[j], cols[ci]]; store.saveProject({ ...cur, columns: cols }); closePop(); };
+  const n = store.tasksOf(p.id).filter(t => t.columnId === col.id).length;
+  const delZone = h('div');
+  const nameInp = h('input', { class: 'inp', id: 'col-name', value: col.name, 'aria-label': 'Название колонки', onchange: e => { const v = e.target.value.trim(); if (v) upd({ name: v }); }, onkeydown: e => { if (e.key === 'Enter') { e.target.blur(); closePop(); } } });
+  const sws = h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Цвет' }, COLORS.map(c => h('button', { class: 'sw' + (c === col.color ? ' on' : ''), style: `--c:${c}`, 'aria-label': 'Цвет ' + c, onclick: e => { upd({ color: c }); sws.querySelectorAll('.sw').forEach(s => s.classList.remove('on')); e.currentTarget.classList.add('on'); } })));
+  openPop(anchor, [
+    nameInp, sws,
+    h('label', { class: 'toggle' }, h('input', { type: 'checkbox', checked: col.done, onchange: e => upd({ done: e.target.checked }) }), 'Задачи здесь выполнены'),
+    h('hr'),
+    h('button', { class: 'mi', onclick: () => move(-1), disabled: ci === 0 }, svg(IC.left), 'Сдвинуть левее'),
+    h('button', { class: 'mi', onclick: () => move(1), disabled: ci === p.columns.length - 1 }, svg(IC.right), 'Сдвинуть правее'),
+    h('button', { class: 'mi red', onclick: () => {
+      if (p.columns.length <= 1) { toast('В проекте должна остаться хотя бы одна колонка.'); return; }
+      delZone.replaceChildren(h('div', { class: 'confirm' }, n ? `Удалить колонку и ${n} ${plural(n, 'задачу', 'задачи', 'задач')} в ней? Это нельзя отменить.` : 'Удалить пустую колонку?',
+        h('div', { class: 'row' }, h('button', { class: 'btn ghost', onclick: () => delZone.replaceChildren() }, 'Отмена'),
+          h('button', { class: 'btn danger', onclick: () => { const cur = store.projects.get(p.id); store.tasksOf(p.id).filter(t => t.columnId === col.id).forEach(t => store.delTask(t)); store.saveProject({ ...cur, columns: cur.columns.filter(c => c.id !== col.id) }); closePop(); } }, 'Удалить'))));
+    } }, svg(IC.trash), 'Удалить колонку'),
+    delZone
+  ]);
+  if (focusName) { nameInp.focus(); nameInp.select(); }
+}
+
+/* ---------- modals ---------- */
+let scrimEl = null, lastFocus = null;
+function openModal(content, cls = '') {
+  closeModal(); lastFocus = document.activeElement;
+  scrimEl = h('div', { class: 'scrim', onmousedown: e => { if (e.target === scrimEl) closeModal(); } }, h('div', { class: 'modal ' + cls, role: 'dialog', 'aria-modal': 'true' }, content));
+  scrimEl.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+  document.body.append(scrimEl);
+}
+function closeModal() {
+  if (!scrimEl) return;
+  document.activeElement?.blur?.();
+  scrimEl.remove(); scrimEl = null; ui.openTask = null;
+  lastFocus?.focus?.();
+}
+
+function colorPicker(cur, onPick) {
+  const wrap = h('div', { class: 'swatches', role: 'radiogroup', 'aria-label': 'Цвет проекта' });
+  COLORS.forEach(c => wrap.append(h('button', { type: 'button', class: 'sw' + (c === cur ? ' on' : ''), style: `--c:${c}`, 'aria-label': 'Цвет ' + c, onclick: e => { wrap.querySelectorAll('.sw').forEach(s => s.classList.remove('on')); e.currentTarget.classList.add('on'); onPick(c); } })));
+  return wrap;
+}
+const autoKey = name => (name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3) || 'ПР').toUpperCase();
+
+function openNewProject() {
+  const st = { name: '', key: '', keyTouched: false, color: COLORS[(store.projects.size + 1) % COLORS.length], tpl: 'dev' };
+  const keyInp = h('input', { class: 'inp', id: 'np-key', maxlength: 6, placeholder: 'ПРО', oninput: e => { st.key = e.target.value.toUpperCase(); st.keyTouched = true; } });
+  const tpls = h('div', { class: 'tpls' });
+  const drawTpls = () => tpls.replaceChildren(...Object.entries(TEMPLATES).map(([k, t]) => h('button', { type: 'button', class: 'tpl' + (st.tpl === k ? ' on' : ''), onclick: () => { st.tpl = k; drawTpls(); } }, h('b', null, t.name), h('small', null, t.cols.map(c => c[0]).join(' → ')))));
+  drawTpls();
+  const submit = e => {
+    e.preventDefault(); const name = st.name.trim(); if (!name) { $('#np-name').focus(); return; }
+    const order = store.projectList().reduce((m, p) => Math.max(m, p.order || 0), 0) + 1;
+    const p = { id: uid(), name, key: (st.key || autoKey(name)).slice(0, 6), color: st.color, order, lastNum: 0, createdAt: Date.now(),
+      columns: TEMPLATES[st.tpl].cols.map(([n, c, d]) => ({ id: uid(), name: n, color: c, done: !!d })) };
+    store.saveProject(p); closeModal(); selectProject(p.id);
+  };
+  openModal(h('form', { onsubmit: submit },
+    h('div', { class: 'm-head' }, h('h2', null, 'Новый проект'), h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
+    h('div', { class: 'm-body' },
+      h('div', { class: 'fields', style: 'grid-template-columns:1fr 90px' },
+        h('div', { class: 'field' }, h('label', { for: 'np-name' }, 'Название'), h('input', { class: 'inp', id: 'np-name', placeholder: 'Например, Ремонт квартиры', oninput: e => { st.name = e.target.value; if (!st.keyTouched) keyInp.value = e.target.value.trim() ? autoKey(e.target.value) : ''; } })),
+        h('div', { class: 'field' }, h('label', { for: 'np-key' }, 'Код задач'), keyInp)),
+      h('div', { class: 'field' }, h('span', { class: 'sec-l' }, 'Цвет'), colorPicker(st.color, c => st.color = c)),
+      h('div', { class: 'field' }, h('span', { class: 'sec-l' }, 'Колонки'), tpls)),
+    h('div', { class: 'm-foot' }, h('span', null, 'Колонки можно изменить потом'), h('button', { class: 'btn primary', type: 'submit' }, 'Создать проект'))), 'sm');
+  $('#np-name').focus();
+}
+
+function openProjectSettings(p) {
+  const st = { name: p.name, key: p.key, color: p.color };
+  const delZone = h('div');
+  const n = store.tasksOf(p.id).length;
+  const submit = e => { e.preventDefault(); const cur = store.projects.get(p.id); store.saveProject({ ...cur, name: st.name.trim() || cur.name, key: (st.key.trim() || cur.key).toUpperCase().slice(0, 6), color: st.color }); closeModal(); };
+  openModal(h('form', { onsubmit: submit },
+    h('div', { class: 'm-head' }, h('h2', null, 'Настройки проекта'), h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
+    h('div', { class: 'm-body' },
+      h('div', { class: 'fields', style: 'grid-template-columns:1fr 90px' },
+        h('div', { class: 'field' }, h('label', { for: 'ps-name' }, 'Название'), h('input', { class: 'inp', id: 'ps-name', value: st.name, oninput: e => st.name = e.target.value })),
+        h('div', { class: 'field' }, h('label', { for: 'ps-key' }, 'Код задач'), h('input', { class: 'inp', id: 'ps-key', maxlength: 6, value: st.key, oninput: e => st.key = e.target.value }))),
+      h('div', { class: 'field' }, h('span', { class: 'sec-l' }, 'Цвет'), colorPicker(st.color, c => st.color = c)),
+      delZone),
+    h('div', { class: 'm-foot' },
+      h('button', { type: 'button', class: 'btn danger', onclick: () => delZone.replaceChildren(h('div', { class: 'confirm' }, `Удалить проект «${p.name}» и ${n} ${plural(n, 'задачу', 'задачи', 'задач')}? Это нельзя отменить.`,
+        h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn ghost', onclick: () => delZone.replaceChildren() }, 'Отмена'),
+          h('button', { type: 'button', class: 'btn danger', onclick: () => { store.delProject(store.projects.get(p.id)); closeModal(); ui.pid = null; render(); } }, 'Удалить навсегда')))) }, svg(IC.trash, 15), 'Удалить проект'),
+      h('button', { class: 'btn primary', type: 'submit' }, 'Сохранить'))), 'sm');
+}
+
+/* task modal */
+function openTask(id) { ui.openTask = id; openModal(h('div', { id: 'task-modal' })); ui.openTask = id; buildTaskModal(); }
+function patchTask(patch) { const t = store.tasks.get(ui.openTask); if (t) store.saveTask({ ...t, ...patch }); }
+let descT;
+function buildTaskModal() {
+  const t = store.tasks.get(ui.openTask); const p = t && store.projects.get(t.projectId);
+  const box = $('#task-modal'); if (!t || !p || !box) { closeModal(); return; }
+  const autosize = el => { el.style.height = 'auto'; el.style.height = el.scrollHeight + 'px'; };
+  const title = h('textarea', { class: 'm-title', id: 'tm-title', rows: 1, value: t.title, 'aria-label': 'Название задачи', oninput: e => autosize(e.target), onchange: e => { const v = e.target.value.trim(); if (v) patchTask({ title: v }); else e.target.value = store.tasks.get(t.id).title; }, onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); } } });
+  const chk = h('div', { class: 'chk', id: 'tm-chk' });
+  const delZone = h('div');
+  box.replaceChildren(
+    h('div', { class: 'm-head' }, h('span', { class: 'keychip' }, `${p.key}-${t.num}`), h('span', { style: 'flex:1;color:var(--ink-muted);font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap' }, p.name),
+      h('button', { class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
+    h('div', { class: 'm-body' }, title,
+      h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { for: 'tm-col' }, 'Статус'), h('select', { class: 'inp', id: 'tm-col', onchange: e => { const cur = store.tasks.get(t.id); const inCol = store.tasksOf(p.id).filter(x => x.columnId === e.target.value); patchTask({ columnId: e.target.value, order: inCol.reduce((m, x) => Math.max(m, x.order || 0), 0) + 1000 }); } },
+          p.columns.map(c => h('option', { value: c.id, selected: c.id === t.columnId }, c.name)))),
+        h('div', { class: 'field' }, h('label', { for: 'tm-prio' }, 'Приоритет'), h('select', { class: 'inp', id: 'tm-prio', onchange: e => patchTask({ priority: +e.target.value }) }, PRIOS.map(([n, v]) => h('option', { value: v, selected: v === (t.priority || 0) }, n)))),
+        h('div', { class: 'field' }, h('label', { for: 'tm-due' }, 'Срок'), h('input', { class: 'inp', id: 'tm-due', type: 'date', value: t.due || '', onchange: e => patchTask({ due: e.target.value }) }))),
+      h('div', { class: 'field' }, h('label', { for: 'tm-desc' }, 'Описание'), h('textarea', { class: 'inp', id: 'tm-desc', placeholder: 'Детали, ссылки, заметки', value: t.desc || '',
+        oninput: e => { clearTimeout(descT); const v = e.target.value; descT = setTimeout(() => patchTask({ desc: v }), 600); }, onblur: e => { clearTimeout(descT); if (e.target.value !== (store.tasks.get(t.id)?.desc || '')) patchTask({ desc: e.target.value }); } })),
+      h('div', { class: 'field' }, h('div', { class: 'sec-h' }, h('span', { class: 'sec-l' }, 'Чек-лист'), h('span', { class: 'num', id: 'tm-chk-n', style: 'color:var(--ink-muted)' })), chk,
+        h('input', { class: 'inp', id: 'tm-chk-add', placeholder: '+ Добавить пункт и нажать Enter', onkeydown: e => { if (e.key === 'Enter') { e.preventDefault(); const v = e.target.value.trim(); if (!v) return; const cur = store.tasks.get(t.id); patchTask({ checklist: [...(cur.checklist || []), { id: uid(), text: v, done: false }] }); e.target.value = ''; } } })),
+      delZone),
+    h('div', { class: 'm-foot' }, h('span', null, 'Создана ' + new Date(t.createdAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })),
+      h('button', { class: 'btn danger', onclick: () => delZone.replaceChildren(h('div', { class: 'confirm' }, 'Удалить задачу? Это нельзя отменить.', h('div', { class: 'row' },
+        h('button', { class: 'btn ghost', onclick: () => delZone.replaceChildren() }, 'Отмена'),
+        h('button', { class: 'btn danger', onclick: () => { const cur = store.tasks.get(t.id); closeModal(); if (cur) store.delTask(cur); } }, 'Удалить')))) }, svg(IC.trash, 15), 'Удалить')));
+  drawChecklist();
+  requestAnimationFrame(() => autosize(title));
+}
+function drawChecklist() {
+  const t = store.tasks.get(ui.openTask); const chk = $('#tm-chk'); if (!t || !chk) return;
+  const list = t.checklist || [];
+  $('#tm-chk-n').textContent = list.length ? `${list.filter(c => c.done).length}/${list.length}` : '';
+  const setList = fn => { const cur = store.tasks.get(t.id); patchTask({ checklist: fn(cur.checklist || []) }); };
+  chk.replaceChildren(...list.map(item => h('div', { class: 'chk-row' + (item.done ? ' dn' : '') },
+    h('input', { type: 'checkbox', id: 'ck-' + item.id, checked: item.done, 'aria-label': item.text, onchange: e => setList(l => l.map(c => c.id === item.id ? { ...c, done: e.target.checked } : c)) }),
+    h('input', { class: 'txt', id: 'ckt-' + item.id, value: item.text, 'aria-label': 'Текст пункта', onchange: e => { const v = e.target.value.trim(); setList(l => v ? l.map(c => c.id === item.id ? { ...c, text: v } : c) : l.filter(c => c.id !== item.id)); } }),
+    h('button', { class: 'ibtn', 'aria-label': 'Удалить пункт', onclick: () => setList(l => l.filter(c => c.id !== item.id)) }, svg(IC.x, 14)))));
+}
+function refreshTaskModal() {
+  // keep what the user is typing; refresh only fields not in focus
+  const t = store.tasks.get(ui.openTask); if (!t) { closeModal(); return; }
+  const a = document.activeElement;
+  const set = (id, v) => { const el = $('#' + id); if (el && el !== a && el.value !== v) el.value = v; };
+  set('tm-title', t.title); set('tm-col', t.columnId); set('tm-prio', String(t.priority || 0)); set('tm-due', t.due || ''); set('tm-desc', t.desc || '');
+  if (!(a && a.closest && a.closest('#tm-chk'))) drawChecklist();
+}
+
+addEventListener('resize', closePop);
+store.init();
+</script>
+</body>
+</html>
