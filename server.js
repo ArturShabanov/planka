@@ -37,6 +37,9 @@ CREATE TABLE IF NOT EXISTS invites (token TEXT PRIMARY KEY, project_id TEXT NOT 
 CREATE TABLE IF NOT EXISTS meta (k TEXT PRIMARY KEY, v TEXT);
 `);
 const q = sql => db.prepare(sql);
+const cols = t => db.prepare(`PRAGMA table_info(${t})`).all().map(c => c.name);
+if (!cols('tasks').includes('remind_at')) db.exec(`ALTER TABLE tasks ADD COLUMN remind_at INTEGER; ALTER TABLE tasks ADD COLUMN remind_by INTEGER; ALTER TABLE tasks ADD COLUMN reminded INTEGER DEFAULT 0;`);
+if (!cols('users').includes('tz')) db.exec(`ALTER TABLE users ADD COLUMN tz TEXT; ALTER TABLE users ADD COLUMN digest INTEGER DEFAULT 1; ALTER TABLE users ADD COLUMN last_digest TEXT;`);
 const now = () => Date.now();
 const bumpRev = () => q(`INSERT INTO meta(k,v) VALUES('rev',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v`).run(String(now()));
 const rev = () => +(q(`SELECT v FROM meta WHERE k='rev'`).get()?.v || 0);
@@ -168,11 +171,17 @@ const routes = [
     const user = q(`SELECT * FROM users WHERE id=?`).get(row.user_id);
     return { token: newSession(user.id), user };
   }],
+  ['POST', /^\/api\/me$/, async (req) => {
+    const u = auth(req); const { tz, digest } = await readBody(req);
+    if (typeof tz === 'string' && tz.length < 64) { try { new Intl.DateTimeFormat('ru-RU', { timeZone: tz }); q(`UPDATE users SET tz=? WHERE id=?`).run(tz, u.id); } catch {} }
+    if (typeof digest === 'boolean') q(`UPDATE users SET digest=? WHERE id=?`).run(digest ? 1 : 0, u.id);
+    return { ok: true };
+  }],
   ['POST', /^\/api\/logout$/, async (req) => { auth(req); q(`DELETE FROM sessions WHERE token=?`).run(req.headers.authorization.replace(/^Bearer\s+/i, '')); return { ok: true }; }],
   ['GET', /^\/api\/state$/, async (req, _, url) => {
     const u = auth(req);
     if (url.searchParams.has('rev') && +url.searchParams.get('rev') === rev()) return { same: true };
-    return { me: { id: u.id, name: u.name, username: u.username }, bot: BOT_USERNAME, ...state(u.id) };
+    return { me: { id: u.id, name: u.name, username: u.username, tz: u.tz, digest: u.digest !== 0 }, bot: BOT_USERNAME, ...state(u.id) };
   }],
   ['PUT', /^\/api\/projects\/([^/]+)$/, async (req, [pid]) => {
     const u = auth(req); if (!ID.test(pid)) fail(400, 'Неверный id');
@@ -199,10 +208,13 @@ const routes = [
     const { data } = await readBody(req);
     const { id, projectId, ...rest } = data || {};
     if (!projectId || !isMember(projectId, u.id)) fail(403, 'Нет доступа к проекту');
-    const ex = q(`SELECT project_id FROM tasks WHERE id=?`).get(tid);
+    const ex = q(`SELECT project_id, remind_at, remind_by, reminded FROM tasks WHERE id=?`).get(tid);
     if (ex && !isMember(ex.project_id, u.id)) fail(403, 'Нет доступа к задаче');
     const s = cleanData(rest, 64 * 1024);
-    q(`INSERT INTO tasks(id,project_id,data,updated) VALUES(?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id, data=excluded.data, updated=excluded.updated`).run(tid, projectId, s, now());
+    const ra = Date.parse(rest.remindAt || '') || null;
+    let rb = ex ? ex.remind_by : null, rd = ex ? ex.reminded || 0 : 0;
+    if (!ex || ex.remind_at !== ra) { rb = ra ? u.id : null; rd = 0; }  // whoever sets the reminder receives it
+    q(`INSERT INTO tasks(id,project_id,data,updated,remind_at,remind_by,reminded) VALUES(?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET project_id=excluded.project_id, data=excluded.data, updated=excluded.updated, remind_at=excluded.remind_at, remind_by=excluded.remind_by, reminded=excluded.reminded`).run(tid, projectId, s, now(), ra, rb, rd);
     bumpRev(); return { ok: true };
   }],
   ['DELETE', /^\/api\/tasks\/([^/]+)$/, async (req, [tid]) => {
@@ -260,5 +272,46 @@ const server = http.createServer(async (req, res) => {
     console.error(e); send(500, { error: 'Ошибка сервера' });
   }
 });
+/* ---------- reminders + morning digest ---------- */
+const esc = s => String(s ?? '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const localParts = (tz, ms = now()) => {
+  const f = new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  const p = Object.fromEntries(f.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+  return { date: `${p.year}-${p.month}-${p.day}`, hour: +p.hour, minute: +p.minute };
+};
+const ruDate = d => new Date(d + 'T00:00:00Z').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'UTC' }).replace('.', '');
+function taskInfo(row) {
+  const t = JSON.parse(row.data), p = JSON.parse(row.pdata);
+  const col = (p.columns || []).find(c => c.id === t.columnId);
+  return { t, p, col, label: `${esc(p.key || '')}-${t.num}` };
+}
+async function sendReminders() {
+  const rows = q(`SELECT t.id, t.project_id, t.data, t.remind_by, p.data pdata FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.remind_at IS NOT NULL AND t.remind_at <= ? AND t.reminded=0 AND t.remind_by IS NOT NULL`).all(now());
+  for (const row of rows) {
+    q(`UPDATE tasks SET reminded=1 WHERE id=?`).run(row.id);
+    const { t, p, col, label } = taskInfo(row);
+    if (!isMember(row.project_id, row.remind_by)) continue; // left the project
+    if (col && col.done) continue;
+    const text = `⏰ <b>Напоминание</b>\n${label} · ${esc(t.title)}\nПроект «${esc(p.name)}»${col ? ` · ${esc(col.name)}` : ''}${t.due ? `\nСрок: ${ruDate(t.due)}` : ''}`;
+    tgApi('sendMessage', { chat_id: row.remind_by, text, parse_mode: 'HTML', reply_markup: openBtn('Открыть задачу', `${BASE_URL}/?task=${row.id}`) }).catch(e => console.error('remind:', e.message));
+  }
+}
+async function sendDigests() {
+  for (const u of q(`SELECT * FROM users WHERE digest IS NOT 0`).all()) {
+    const lp = localParts(u.tz);
+    if (lp.hour !== 9 || u.last_digest === lp.date) continue;
+    q(`UPDATE users SET last_digest=? WHERE id=?`).run(lp.date, u.id);
+    const rows = q(`SELECT t.id, t.data, p.data pdata FROM tasks t JOIN members m ON m.project_id=t.project_id AND m.user_id=? JOIN projects p ON p.id=t.project_id`).all(u.id);
+    const due = rows.map(taskInfo).filter(x => x.t.due && x.t.due <= lp.date && !(x.col && x.col.done))
+      .sort((a, b) => a.t.due.localeCompare(b.t.due) || (b.t.priority || 0) - (a.t.priority || 0));
+    if (!due.length) continue;
+    const lines = due.slice(0, 25).map(x => `• ${x.label} ${esc(x.t.title)} — ${x.t.due < lp.date ? `<b>просрочено</b> (${ruDate(x.t.due)})` : 'сегодня'}`);
+    const more = due.length > 25 ? `\n…и ещё ${due.length - 25}` : '';
+    const text = `☀️ <b>Задачи на сегодня</b>\n${lines.join('\n')}${more}`;
+    tgApi('sendMessage', { chat_id: u.id, text, parse_mode: 'HTML', reply_markup: openBtn('Открыть задачи', BASE_URL + '/') }).catch(e => console.error('digest:', e.message));
+  }
+}
+setInterval(() => { sendReminders().catch(e => console.error(e)); sendDigests().catch(e => console.error(e)); }, 30e3);
+
 server.listen(PORT, HOST, () => console.log(`planka on http://${HOST}:${PORT} → ${BASE_URL}`));
 botLoop();

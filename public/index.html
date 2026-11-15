@@ -129,7 +129,7 @@ button:disabled{opacity:.4;cursor:default}
 .m-body{padding:10px 18px 18px;display:flex;flex-direction:column;gap:16px}
 .m-title{width:100%;border:0;background:none;resize:none;font-weight:500;font-size:20px;line-height:1.3;outline:none;padding:4px 0;overflow:hidden;color:var(--ink)}
 .m-title:focus{box-shadow:0 2px 0 var(--link)}
-.fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
 .field{display:flex;flex-direction:column;gap:4px;min-width:0}
 .field label,.sec-l{font-size:12px;color:var(--ink-muted)}
 .inp{width:100%;border:1px solid var(--card-line);background:var(--chip);border-radius:8px;padding:7px 9px;outline:none;min-width:0;color:var(--ink)}
@@ -169,6 +169,8 @@ textarea.inp{resize:vertical;min-height:96px}
 .linkbtn:hover{text-decoration:underline}
 .linkbtn.red{color:var(--danger)}
 .store-note .linkbtn{color:var(--chrome-muted)}
+.digest{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--chrome-muted);padding:0 12px;cursor:pointer}
+.digest input{accent-color:var(--done)}
 .members{display:flex;flex-direction:column;gap:6px}
 .mem{display:flex;align-items:center;gap:10px}
 .ava{width:30px;height:30px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font-weight:500;flex:none}
@@ -199,7 +201,7 @@ textarea.inp{resize:vertical;min-height:96px}
 @media (max-width:760px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .side{border-right:0;border-bottom:1px solid var(--chrome-line);padding-block:8px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-left:max(16px,env(safe-area-inset-left,0px));flex-direction:row;align-items:center}
-  .brand,.store-note,.side-label .lbl{display:none}
+  .brand,.store-note,.digest,.side-label .lbl{display:none}
   .side-label{padding:0;order:2}
   .plist{flex-direction:row;overflow-x:auto;overflow-y:hidden;gap:6px;flex:1}
   .pitem{width:auto;flex:none;padding:6px 12px;font-size:14px}
@@ -241,6 +243,7 @@ function h(tag, props, ...kids) {
 }
 const svg = (d, s = 16) => { const w = document.createElement('span'); w.style.display = 'inline-flex'; w.innerHTML = `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`; return w; };
 const IC = {
+  bell: '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/>',
   users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>', send: '<path d="M21 3 3 10.5l7 2.5 2.5 7Z"/><path d="m21 3-11 10"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>', dotsV: '<circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/>',
   board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>', plusCircle: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
@@ -257,6 +260,9 @@ const TEMPLATES = {
   dev: { name: 'Разработка', cols: [['backlog', '#B4BED3'], ['в работу', '#F2A65A'], ['в работе', '#F2CF4A'], ['на проверке', '#A889E8'], ['готово', '#4CC3BE', true]] },
   simple: { name: 'Простой', cols: [['в работу', '#F2A65A'], ['в работе', '#F2CF4A'], ['готово', '#4CC3BE', true]] }
 };
+const toLocalInput = iso => { if (!iso) return ''; const d = new Date(iso); if (isNaN(d)) return ''; const z = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${z(d.getMonth() + 1)}-${z(d.getDate())}T${z(d.getHours())}:${z(d.getMinutes())}`; };
+const fromLocalInput = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : d.toISOString(); };
+const fmtRemind = iso => new Date(iso).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).replace('.', '');
 const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
 const fmtDate = s => new Date(s + 'T00:00').toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }).replace('.', '');
 function plural(n, a, b, c) { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? a : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? b : c; }
@@ -289,6 +295,7 @@ const store = {
   },
   async init() {
     const params = new URLSearchParams(location.search);
+    ui.openTaskId = params.get('task');
     ui.join = params.get('join') || (inTg && tg.initDataUnsafe && (tg.initDataUnsafe.start_param || '').replace(/^join_/, '')) || null;
     this.loadCache(); render();
     if (inTg && !this.token) {
@@ -323,6 +330,12 @@ const store = {
       catch (e) { toast(e.message); }
       ui.join = null; try { history.replaceState(null, '', location.pathname); } catch {}
     }
+    if (ui.openTaskId) {
+      const t = this.tasks.get(ui.openTaskId); ui.openTaskId = null;
+      try { history.replaceState(null, '', location.pathname); } catch {}
+      if (t) { ui.pid = t.projectId; ls.set('planka-pid', t.projectId); render(); openTask(t.id); }
+    }
+    try { const tz = Intl.DateTimeFormat().resolvedOptions().timeZone; if (tz && this.me && this.me.tz !== tz) { this.api('POST', '/api/me', { tz }).catch(() => {}); this.me.tz = tz; } } catch {}
     clearInterval(this.timer);
     this.timer = setInterval(() => { if (document.visibilityState === 'visible') this.pull(false); }, 8000);
     if (!this.visBound) { this.visBound = true; document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.pull(false); }); }
@@ -412,7 +425,10 @@ function renderSide() {
     })),
     loggedIn && store.me ? h('div', { class: 'store-note' },
       h('span', { style: 'flex:1;min-width:0' }, store.me.name, store.me.username ? h('span', { style: 'display:block' }, '@' + store.me.username) : null),
-      inTg ? null : h('button', { class: 'linkbtn', onclick: () => { store.api('POST', '/api/logout').catch(() => {}); store.logout(); } }, 'Выйти')) : null
+      inTg ? null : h('button', { class: 'linkbtn', onclick: () => { store.api('POST', '/api/logout').catch(() => {}); store.logout(); } }, 'Выйти')) : null,
+    loggedIn && store.me ? h('label', { class: 'digest' }, h('input', { type: 'checkbox', id: 'digest', checked: store.me.digest !== false,
+      onchange: e => { store.me.digest = e.target.checked; store.api('POST', '/api/me', { digest: e.target.checked }).then(() => toast(e.target.checked ? 'Сводка будет приходить в 9:00.' : 'Утренняя сводка выключена.')).catch(err => toast(err.message)); } }),
+      'Сводка задач в Telegram в 9:00') : null
   );
 }
 
@@ -507,6 +523,7 @@ function taskCard(t, p, isDone) {
       h('span', { class: 'chip num' }, `${p.key}-${t.num}`),
       t.priority ? h('span', { class: 'chip prio p' + t.priority, title: 'Приоритет' }, h('i', null, h('b'), h('b'), h('b')), PRIOS[t.priority][0]) : null,
       t.due ? h('span', { class: 'chip' + (over ? ' over' : ''), title: 'Срок' }, svg(IC.cal, 13), fmtDate(t.due)) : null,
+      t.remindAt && new Date(t.remindAt) > new Date() ? h('span', { class: 'chip', title: 'Напоминание в Telegram' }, svg(IC.bell, 13), fmtRemind(t.remindAt)) : null,
       total ? h('span', { class: 'chip', title: 'Чек-лист' }, svg(IC.check, 13), `${dn}/${total}`) : null,
       t.desc ? h('span', { class: 'chip', title: 'Есть описание' }, svg(IC.text, 13)) : null));
 }
@@ -740,6 +757,9 @@ function openProjectSettings(p) {
         })),
         owner ? h('button', { type: 'button', class: 'btn', style: 'align-self:flex-start', onclick: makeInvite }, svg(IC.plus, 15), 'Пригласить по ссылке') : null,
         inviteBox),
+      store.me ? h('label', { class: 'toggle', style: 'padding:0' }, h('input', { type: 'checkbox', id: 'ps-digest', checked: store.me.digest !== false,
+        onchange: e => { store.me.digest = e.target.checked; store.api('POST', '/api/me', { digest: e.target.checked }).catch(err => toast(err.message)); render(); } }),
+        'Присылать мне в Telegram сводку задач на сегодня в 9:00 (по всем проектам)') : null,
       delZone),
     h('div', { class: 'm-foot' },
       owner ? h('button', { type: 'button', class: 'btn danger', onclick: () => delZone.replaceChildren(h('div', { class: 'confirm' }, `Удалить проект «${p.name}» и ${n} ${plural(n, 'задачу', 'задачи', 'задач')} у всех участников? Это нельзя отменить.`,
@@ -767,7 +787,8 @@ function buildTaskModal() {
         h('div', { class: 'field' }, h('label', { for: 'tm-col' }, 'Статус'), h('select', { class: 'inp', id: 'tm-col', onchange: e => { const cur = store.tasks.get(t.id); const inCol = store.tasksOf(p.id).filter(x => x.columnId === e.target.value); patchTask({ columnId: e.target.value, order: inCol.reduce((m, x) => Math.max(m, x.order || 0), 0) + 1000 }); } },
           p.columns.map(c => h('option', { value: c.id, selected: c.id === t.columnId }, c.name)))),
         h('div', { class: 'field' }, h('label', { for: 'tm-prio' }, 'Приоритет'), h('select', { class: 'inp', id: 'tm-prio', onchange: e => patchTask({ priority: +e.target.value }) }, PRIOS.map(([n, v]) => h('option', { value: v, selected: v === (t.priority || 0) }, n)))),
-        h('div', { class: 'field' }, h('label', { for: 'tm-due' }, 'Срок'), h('input', { class: 'inp', id: 'tm-due', type: 'date', value: t.due || '', onchange: e => patchTask({ due: e.target.value }) }))),
+        h('div', { class: 'field' }, h('label', { for: 'tm-due' }, 'Срок'), h('input', { class: 'inp', id: 'tm-due', type: 'date', value: t.due || '', onchange: e => patchTask({ due: e.target.value }) })),
+        h('div', { class: 'field' }, h('label', { for: 'tm-remind' }, 'Напомнить в Telegram'), h('input', { class: 'inp', id: 'tm-remind', type: 'datetime-local', value: toLocalInput(t.remindAt), onchange: e => patchTask({ remindAt: fromLocalInput(e.target.value) }) }))),
       h('div', { class: 'field' }, h('label', { for: 'tm-desc' }, 'Описание'), h('textarea', { class: 'inp', id: 'tm-desc', placeholder: 'Детали, ссылки, заметки', value: t.desc || '',
         oninput: e => { clearTimeout(descT); const v = e.target.value; descT = setTimeout(() => patchTask({ desc: v }), 600); }, onblur: e => { clearTimeout(descT); if (e.target.value !== (store.tasks.get(t.id)?.desc || '')) patchTask({ desc: e.target.value }); } })),
       h('div', { class: 'field' }, h('div', { class: 'sec-h' }, h('span', { class: 'sec-l' }, 'Чек-лист'), h('span', { class: 'num', id: 'tm-chk-n', style: 'color:var(--ink-muted)' })), chk,
@@ -795,7 +816,7 @@ function refreshTaskModal() {
   const t = store.tasks.get(ui.openTask); if (!t) { closeModal(); return; }
   const a = document.activeElement;
   const set = (id, v) => { const el = $('#' + id); if (el && el !== a && el.value !== v) el.value = v; };
-  set('tm-title', t.title); set('tm-col', t.columnId); set('tm-prio', String(t.priority || 0)); set('tm-due', t.due || ''); set('tm-desc', t.desc || '');
+  set('tm-title', t.title); set('tm-col', t.columnId); set('tm-prio', String(t.priority || 0)); set('tm-due', t.due || ''); set('tm-remind', toLocalInput(t.remindAt)); set('tm-desc', t.desc || '');
   if (!(a && a.closest && a.closest('#tm-chk'))) drawChecklist();
 }
 
@@ -810,10 +831,10 @@ function openAddSheet(p, colId) {
     onkeydown: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); add(false); } } });
   const add = more => {
     const title = ta.value.trim(); if (!title) { ta.focus(); return; }
-    createTask(store.projects.get(p.id) || p, st.col, title, { priority: st.prio, due: st.due });
+    createTask(store.projects.get(p.id) || p, st.col, title, { priority: st.prio, due: st.due, remindAt: st.remindAt || '' });
     const col = p.columns.find(c => c.id === st.col);
     toast(`Добавлено в «${col ? col.name : ''}»`);
-    if (more) { ta.value = ''; ta.focus(); } else closeModal();
+    if (more) { ta.value = ''; st.remindAt = ''; const r = $('#as-remind'); if (r) r.value = ''; ta.focus(); } else closeModal();
   };
   openModal(h('div', null,
     h('div', { class: 'm-head' }, h('h2', null, 'Новая задача'), h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
@@ -821,7 +842,8 @@ function openAddSheet(p, colId) {
       h('div', { class: 'fields' },
         h('div', { class: 'field' }, h('label', { for: 'as-col' }, 'Колонка'), h('select', { class: 'inp', id: 'as-col', onchange: e => st.col = e.target.value }, p.columns.map(c => h('option', { value: c.id, selected: c.id === st.col }, c.name)))),
         h('div', { class: 'field' }, h('label', { for: 'as-prio' }, 'Приоритет'), h('select', { class: 'inp', id: 'as-prio', onchange: e => st.prio = +e.target.value }, PRIOS.map(([n, v]) => h('option', { value: v }, n)))),
-        h('div', { class: 'field' }, h('label', { for: 'as-due' }, 'Срок'), h('input', { class: 'inp', id: 'as-due', type: 'date', onchange: e => st.due = e.target.value })))),
+        h('div', { class: 'field' }, h('label', { for: 'as-due' }, 'Срок'), h('input', { class: 'inp', id: 'as-due', type: 'date', onchange: e => st.due = e.target.value })),
+        h('div', { class: 'field' }, h('label', { for: 'as-remind' }, 'Напомнить'), h('input', { class: 'inp', id: 'as-remind', type: 'datetime-local', onchange: e => st.remindAt = fromLocalInput(e.target.value) })))),
     h('div', { class: 'm-foot' },
       h('button', { type: 'button', class: 'btn keep-kb', onclick: () => add(true) }, 'Добавить ещё'),
       h('button', { type: 'button', class: 'btn primary', onclick: () => add(false) }, 'Добавить'))), 'sm sheet');
