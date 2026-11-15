@@ -171,7 +171,7 @@ const routes = [
   ['POST', /^\/api\/logout$/, async (req) => { auth(req); q(`DELETE FROM sessions WHERE token=?`).run(req.headers.authorization.replace(/^Bearer\s+/i, '')); return { ok: true }; }],
   ['GET', /^\/api\/state$/, async (req, _, url) => {
     const u = auth(req);
-    if (+url.searchParams.get('rev') === rev()) return { same: true };
+    if (url.searchParams.has('rev') && +url.searchParams.get('rev') === rev()) return { same: true };
     return { me: { id: u.id, name: u.name, username: u.username }, bot: BOT_USERNAME, ...state(u.id) };
   }],
   ['PUT', /^\/api\/projects\/([^/]+)$/, async (req, [pid]) => {

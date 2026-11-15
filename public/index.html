@@ -207,6 +207,8 @@ textarea.inp{resize:vertical;min-height:96px}
 
 <script>
 /* ---------- helpers ---------- */
+const _rc = Element.prototype.replaceChildren;
+Element.prototype.replaceChildren = function (...a) { return _rc.apply(this, a.filter(x => x != null && x !== false)); };
 const $ = (s, r = document) => r.querySelector(s);
 function h(tag, props, ...kids) {
   const el = document.createElement(tag);
@@ -316,7 +318,8 @@ const store = {
     const seq = this.writeSeq;
     try {
       const j = await this.api('GET', '/api/state' + (force ? '' : '?rev=' + this.rev));
-      if (j.same) { if (this.banner) { this.banner = ''; render(); } return; }
+      if (j.same && this.ready) { if (this.banner) { this.banner = ''; render(); } return; }
+      if (j.same) { return this.pull(true); }
       if (seq !== this.writeSeq || this.running.size || this.pending.size) return; // a local edit happened meanwhile; next pull brings it
       this.me = j.me; this.bot = j.bot; this.rev = j.rev;
       this.projects = new Map(j.projects.map(p => [p.id, p]));
