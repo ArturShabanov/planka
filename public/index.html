@@ -203,7 +203,10 @@ textarea.inp{resize:vertical;min-height:96px}
   .side{border-right:0;border-bottom:1px solid var(--chrome-line);padding-block:8px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-left:max(16px,env(safe-area-inset-left,0px));flex-direction:row;align-items:center}
   .brand,.store-note,.digest,.side-label .lbl{display:none}
   .side-label{padding:0;order:2}
-  .plist{flex-direction:row;overflow-x:auto;overflow-y:hidden;gap:6px;flex:1}
+  .plist{flex-direction:row;overflow-x:auto;overflow-y:hidden;gap:6px;flex:1 1 0;min-width:0;touch-action:pan-x;-webkit-overflow-scrolling:touch;scrollbar-width:none;overscroll-behavior-x:contain}
+  .plist::-webkit-scrollbar{display:none}
+  .side{overflow:hidden}
+  .side-label{flex:none}
   .pitem{width:auto;flex:none;padding:6px 12px;font-size:14px}
   .pitem .nm{max-width:140px}
   .top,.toolbar,.board{padding-left:max(16px,env(safe-area-inset-left,0px))}
@@ -409,6 +412,7 @@ function render() { renderSide(); renderMain(); if (ui.openTask) refreshTaskModa
 
 function renderSide() {
   const side = $('#side'); const p = curProject();
+  const prevScroll = side.querySelector('.plist')?.scrollLeft || 0;
   const list = store.projectList();
   const loggedIn = store.mode === 'server';
   side.replaceChildren(
@@ -430,6 +434,7 @@ function renderSide() {
       onchange: e => { store.me.digest = e.target.checked; store.api('POST', '/api/me', { digest: e.target.checked }).then(() => toast(e.target.checked ? 'Сводка будет приходить в 9:00.' : 'Утренняя сводка выключена.')).catch(err => toast(err.message)); } }),
       'Сводка задач в Telegram в 9:00') : null
   );
+  const pl = side.querySelector('.plist'); if (pl) { pl.scrollLeft = prevScroll; if (ui.scrollToPid !== ui.pid) { ui.scrollToPid = ui.pid; pl.querySelector('.pitem.on')?.scrollIntoView({ inline: 'nearest', block: 'nearest' }); } }
 }
 
 function renderLogin(main) {
