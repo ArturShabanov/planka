@@ -181,6 +181,21 @@ textarea.inp{resize:vertical;min-height:96px}
 .inv-row .inp{flex:1}
 .pitem .ct span{vertical-align:middle}
 .empty a.btn{text-decoration:none}
+.fab{display:none}
+.sheet-title{font-size:17px;min-height:84px;resize:none}
+@media (max-width:760px), (pointer:coarse){
+  .fab{display:flex;position:fixed;right:calc(18px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));width:58px;height:58px;border-radius:50%;background:var(--link);color:#fff;align-items:center;justify-content:center;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:40}
+  .fab:active{transform:scale(.95)}
+}
+@media (max-width:760px){
+  .top{padding-block:8px;gap:8px}
+  .ptitle h1{font-size:16px}
+  .toolbar{padding-block:8px}
+  .toolbar .tb-group:first-child{display:none}
+  .board{padding-bottom:96px}
+  .scrim{padding-top:max(12px,env(safe-area-inset-top,0px))}
+  .m-foot .btn{flex:1;justify-content:center;padding-block:11px}
+}
 @media (max-width:760px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .side{border-right:0;border-bottom:1px solid var(--chrome-line);padding-block:8px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-left:max(16px,env(safe-area-inset-left,0px));flex-direction:row;align-items:center}
@@ -457,12 +472,13 @@ function renderMain() {
       h('header', { class: 'col-h' },
         h('div', { class: 'r1' }, h('h2', null, col.name), h('span', { class: 'col-n', title: col.done ? 'Задачи здесь считаются выполненными' : 'Задач в колонке' }, (col.done ? '✓ ' : '') + (q ? `${shown.length}/${colTasks.length}` : colTasks.length)),
           h('button', { class: 'ibtn', 'aria-label': `Меню колонки «${col.name}»`, onclick: e => openColMenu(e.currentTarget, p, ci) }, svg(IC.dotsV, 18))),
-        h('button', { class: 'add-task', onclick: () => { ui.quickAdd = col.id; renderMain(); $('#qa-input')?.focus(); } }, svg(IC.plus, 17), 'Добавить задачу')),
+        h('button', { class: 'add-task', onclick: () => { if (isPhone()) { openAddSheet(p, col.id); return; } ui.quickAdd = col.id; renderMain(); $('#qa-input')?.focus(); } }, svg(IC.plus, 17), 'Добавить задачу')),
       cards));
   });
   board.append(h('button', { class: 'col-add', onclick: () => addColumn(p) }, svg(IC.plusCircle, 18), 'Создать колонку'));
 
-  main.replaceChildren(top, toolbar, store.banner ? h('div', { class: 'banner' }, store.banner) : null, board);
+  main.replaceChildren(top, toolbar, store.banner ? h('div', { class: 'banner' }, store.banner) : null, board,
+    h('button', { class: 'fab', 'aria-label': 'Новая задача', onclick: () => openAddSheet(p) }, svg(IC.plus, 26)));
   board.scrollLeft = scrollX;
   main.querySelectorAll('.cards').forEach(c => { if (colScroll[c.dataset.col]) c.scrollTop = colScroll[c.dataset.col]; });
   if (focusedQA !== null) { const i = $('#qa-input'); if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); } }
@@ -506,12 +522,12 @@ function quickAddBox(p, colId, val) {
     h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: submit }, 'Добавить'), h('button', { class: 'btn ghost', onclick: () => { ui.quickAdd = null; renderMain(); } }, 'Отмена')));
 }
 
-function createTask(p, colId, title) {
+function createTask(p, colId, title, extra) {
   const tasks = store.tasksOf(p.id);
   const num = tasks.reduce((m, t) => Math.max(m, t.num || 0), p.lastNum || 0) + 1;
   const inCol = tasks.filter(t => t.columnId === colId);
   const order = inCol.reduce((m, t) => Math.min(m, t.order || 0), 1000) - 1000;
-  store.saveTask({ id: uid(), projectId: p.id, columnId: colId, num, title, desc: '', priority: 0, due: '', checklist: [], order, createdAt: Date.now() });
+  store.saveTask({ id: uid(), projectId: p.id, columnId: colId, num, title, desc: '', priority: 0, due: '', checklist: [], order, createdAt: Date.now(), ...(extra || {}) });
 }
 
 /* ---------- drag and drop ---------- */
@@ -784,6 +800,41 @@ function refreshTaskModal() {
 }
 
 addEventListener('resize', closePop);
+
+/* ---------- phone: add-task sheet + hide keyboard on outside tap ---------- */
+function isPhone() { return matchMedia('(max-width:760px), (pointer:coarse)').matches; }
+function openAddSheet(p, colId) {
+  const open = p.columns.find(c => !c.done) || p.columns[0];
+  const st = { col: colId || open.id, prio: 0, due: '' };
+  const ta = h('textarea', { class: 'inp sheet-title', id: 'as-title', rows: 3, placeholder: 'Что нужно сделать?', enterkeyhint: 'done', 'aria-label': 'Название задачи',
+    onkeydown: e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); add(false); } } });
+  const add = more => {
+    const title = ta.value.trim(); if (!title) { ta.focus(); return; }
+    createTask(store.projects.get(p.id) || p, st.col, title, { priority: st.prio, due: st.due });
+    const col = p.columns.find(c => c.id === st.col);
+    toast(`Добавлено в «${col ? col.name : ''}»`);
+    if (more) { ta.value = ''; ta.focus(); } else closeModal();
+  };
+  openModal(h('div', null,
+    h('div', { class: 'm-head' }, h('h2', null, 'Новая задача'), h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
+    h('div', { class: 'm-body' }, ta,
+      h('div', { class: 'fields' },
+        h('div', { class: 'field' }, h('label', { for: 'as-col' }, 'Колонка'), h('select', { class: 'inp', id: 'as-col', onchange: e => st.col = e.target.value }, p.columns.map(c => h('option', { value: c.id, selected: c.id === st.col }, c.name)))),
+        h('div', { class: 'field' }, h('label', { for: 'as-prio' }, 'Приоритет'), h('select', { class: 'inp', id: 'as-prio', onchange: e => st.prio = +e.target.value }, PRIOS.map(([n, v]) => h('option', { value: v }, n)))),
+        h('div', { class: 'field' }, h('label', { for: 'as-due' }, 'Срок'), h('input', { class: 'inp', id: 'as-due', type: 'date', onchange: e => st.due = e.target.value })))),
+    h('div', { class: 'm-foot' },
+      h('button', { type: 'button', class: 'btn keep-kb', onclick: () => add(true) }, 'Добавить ещё'),
+      h('button', { type: 'button', class: 'btn primary', onclick: () => add(false) }, 'Добавить'))), 'sm sheet');
+  ta.focus();
+}
+// tapping anywhere outside a text field closes the on-screen keyboard
+document.addEventListener('touchstart', e => {
+  const a = document.activeElement;
+  if (!a || !/^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName)) return;
+  if (e.target.closest('input, textarea, select, label, .keep-kb')) return;
+  a.blur();
+}, { passive: true, capture: true });
+
 store.init();
 </script>
 </body>
