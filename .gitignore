@@ -1,0 +1,4 @@
+planka.db*
+.env
+server.log
+server.pid

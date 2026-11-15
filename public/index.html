@@ -165,6 +165,22 @@ textarea.inp{resize:vertical;min-height:96px}
 .toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--card);color:var(--ink);padding:10px 14px;border-radius:10px;font-size:13px;z-index:80;max-width:calc(100% - 32px);box-shadow:0 8px 30px rgba(0,0,0,.4)}
 .banner{margin:0 24px 10px;padding:8px 12px;border-radius:8px;background:var(--danger-soft);color:var(--danger);font-size:13px}
 
+.linkbtn{color:var(--link);font-size:13px}
+.linkbtn:hover{text-decoration:underline}
+.linkbtn.red{color:var(--danger)}
+.store-note .linkbtn{color:var(--chrome-muted)}
+.members{display:flex;flex-direction:column;gap:6px}
+.mem{display:flex;align-items:center;gap:10px}
+.ava{width:30px;height:30px;border-radius:50%;background:var(--c);color:#fff;display:grid;place-items:center;font-weight:500;flex:none}
+.mem-n{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.mem-n small{display:block;color:var(--ink-muted);font-size:12px}
+.role{font-size:12px;color:var(--ink-muted);background:var(--chip);border:1px solid var(--chip-line);border-radius:6px;padding:2px 7px}
+.invite{display:flex;flex-direction:column;gap:8px}
+.invite:empty{display:none}
+.inv-row{display:flex;gap:6px}
+.inv-row .inp{flex:1}
+.pitem .ct span{vertical-align:middle}
+.empty a.btn{text-decoration:none}
 @media (max-width:760px){
   .app{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}
   .side{border-right:0;border-bottom:1px solid var(--chrome-line);padding-block:8px;padding-right:max(16px,env(safe-area-inset-right,0px));padding-left:max(16px,env(safe-area-inset-left,0px));flex-direction:row;align-items:center}
@@ -208,6 +224,7 @@ function h(tag, props, ...kids) {
 }
 const svg = (d, s = 16) => { const w = document.createElement('span'); w.style.display = 'inline-flex'; w.innerHTML = `<svg width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`; return w; };
 const IC = {
+  users: '<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M18 14a6 6 0 0 1 3.5 6"/>', send: '<path d="M21 3 3 10.5l7 2.5 2.5 7Z"/><path d="m21 3-11 10"/>',
   folder: '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>', dotsV: '<circle cx="12" cy="5" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="12" cy="19" r="1.3"/>',
   board: '<rect x="3" y="4" width="5" height="16" rx="1"/><rect x="10" y="4" width="5" height="10" rx="1"/><rect x="17" y="4" width="4" height="13" rx="1"/>', plusCircle: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
   plus: '<path d="M12 5v14M5 12h14"/>', dots: '<circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/>',
@@ -240,78 +257,110 @@ if (inTg) {
 }
 const haptic = () => { try { tg && tg.HapticFeedback && tg.HapticFeedback.impactOccurred('medium'); } catch {} };
 
-/* ---------- store: Telegram CloudStorage inside Telegram, browser storage outside ---------- */
-const LS_KEY = 'planka-local-v1';
-const MAX_VAL = 4096;
-const cloud = inTg && tg.CloudStorage && tg.isVersionAtLeast && tg.isVersionAtLeast('6.9') ? tg.CloudStorage : null;
-const cs = (method, ...args) => new Promise((res, rej) => { try { cloud[method](...args, (err, v) => err ? rej(err) : res(v)); } catch (e) { rej(e); } });
-const ckey = (kind, id) => (kind === 'projects' ? 'p_' : 't_') + id;
-
+/* ---------- store: server API (shared between Telegram, laptop and invited people) ---------- */
+const LS_KEY = 'planka-cache-v2';
+const TOKEN_KEY = 'planka-token';
 const store = {
-  mode: 'loading', ready: false, banner: '',
-  projects: new Map(), tasks: new Map(), pending: new Map(), running: new Set(),
-  async init() {
-    this.loadLocal();
-    this.mode = cloud ? 'tg' : 'local';
-    this.ready = true; render();
-    if (!cloud) return;
-    await this.pull(true);
-    tg.onEvent && tg.onEvent('activated', () => this.pull(false));
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.pull(false); });
+  mode: 'loading', ready: false, banner: '', me: null, bot: '', rev: 0, token: ls.get(TOKEN_KEY), writeSeq: 0, timer: null,
+  projects: new Map(), tasks: new Map(), pending: new Map(), running: new Set(), login: null,
+  async api(method, url, body) {
+    const r = await fetch(url, { method, headers: { 'content-type': 'application/json', ...(this.token ? { authorization: 'Bearer ' + this.token } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (r.status === 401 && this.token && !url.startsWith('/api/auth')) { this.logout(); }
+    if (!r.ok) { const e = new Error(j.error || 'Ошибка ' + r.status); e.status = r.status; throw e; }
+    return j;
   },
-  async pull(first) {
-    if (this.running.size || this.pending.size) return; // don't overwrite edits still being saved
+  async init() {
+    const params = new URLSearchParams(location.search);
+    ui.join = params.get('join') || (inTg && tg.initDataUnsafe && (tg.initDataUnsafe.start_param || '').replace(/^join_/, '')) || null;
+    this.loadCache(); render();
+    if (inTg && !this.token) {
+      try { const r = await this.api('POST', '/api/auth/tg', { initData: tg.initData }); this.setToken(r.token); }
+      catch (e) { this.banner = 'Не удалось войти через Telegram: ' + e.message; }
+    }
+    if (!this.token) { this.startLogin(); return; }
+    await this.afterLogin();
+  },
+  setToken(t) { this.token = t; ls.set(TOKEN_KEY, t); },
+  async startLogin() {
+    this.mode = 'login'; this.ready = true; this.projects = new Map(); this.tasks = new Map(); render();
     try {
-      const keys = (await cs('getKeys')).filter(k => /^[pt]_/.test(k));
-      const vals = {};
-      for (let i = 0; i < keys.length; i += 50) Object.assign(vals, await cs('getItems', keys.slice(i, i + 50)));
-      const projects = new Map(), tasks = new Map();
-      for (const [k, v] of Object.entries(vals)) {
-        if (!v) continue;
-        try { const o = JSON.parse(v); (k[0] === 'p' ? projects : tasks).set(o.id, o); } catch {}
-      }
-      if (first && !projects.size && this.projects.size) {
-        // cloud is empty but this device has tasks: upload them
-        for (const p of this.projects.values()) this.write('projects', p);
-        for (const t of this.tasks.values()) this.write('tasks', t);
-      } else {
-        this.projects = projects; this.tasks = tasks; this.saveLocal();
-      }
-      this.banner = ''; render();
+      const { code, url } = await this.api('POST', '/api/auth/link');
+      this.login = { code, url }; render();
+      const poll = async () => {
+        if (this.mode !== 'login' || !this.login || this.login.code !== code) return;
+        try {
+          const r = await this.api('GET', '/api/auth/link/' + code);
+          if (r.token) { this.setToken(r.token); this.login = null; await this.afterLogin(); return; }
+        } catch (e) { if (e.status === 410) { this.startLogin(); return; } }
+        setTimeout(poll, 2000);
+      };
+      setTimeout(poll, 2000);
+    } catch (e) { this.banner = 'Сервер недоступен. Попробуйте обновить страницу.'; render(); }
+  },
+  async afterLogin() {
+    this.mode = 'server';
+    await this.pull(true);
+    if (ui.join) {
+      try { const r = await this.api('POST', `/api/invites/${ui.join}/accept`); ui.pid = r.projectId; ls.set('planka-pid', r.projectId); await this.pull(true); toast('Вы в проекте. Можно добавлять задачи.'); }
+      catch (e) { toast(e.message); }
+      ui.join = null; try { history.replaceState(null, '', location.pathname); } catch {}
+    }
+    clearInterval(this.timer);
+    this.timer = setInterval(() => { if (document.visibilityState === 'visible') this.pull(false); }, 8000);
+    if (!this.visBound) { this.visBound = true; document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') this.pull(false); }); }
+  },
+  async pull(force) {
+    if (!this.token || this.mode !== 'server') return;
+    if (!force && (this.running.size || this.pending.size)) return;
+    const seq = this.writeSeq;
+    try {
+      const j = await this.api('GET', '/api/state' + (force ? '' : '?rev=' + this.rev));
+      if (j.same) { if (this.banner) { this.banner = ''; render(); } return; }
+      if (seq !== this.writeSeq || this.running.size || this.pending.size) return; // a local edit happened meanwhile; next pull brings it
+      this.me = j.me; this.bot = j.bot; this.rev = j.rev;
+      this.projects = new Map(j.projects.map(p => [p.id, p]));
+      this.tasks = new Map(j.tasks.map(t => [t.id, t]));
+      this.ready = true; this.banner = ''; this.saveCache(); render();
     } catch (e) {
-      this.banner = 'Не удалось загрузить задачи из облака Telegram. Показаны данные, сохранённые на этом устройстве.'; render();
+      if (e.status === 401) return;
+      this.ready = true; this.banner = 'Нет связи с сервером. Показаны последние загруженные задачи.'; render();
     }
   },
-  loadLocal() {
-    try { const raw = JSON.parse(ls.get(LS_KEY) || '{}'); this.projects = new Map((raw.projects || []).map(p => [p.id, p])); this.tasks = new Map((raw.tasks || []).map(t => [t.id, t])); } catch {}
+  logout() {
+    clearInterval(this.timer); this.token = null; ls.set(TOKEN_KEY, ''); ls.set(LS_KEY, '');
+    this.me = null; this.rev = 0;
+    if (inTg) { this.mode = 'loading'; this.init(); } else this.startLogin();
   },
-  saveLocal() { ls.set(LS_KEY, JSON.stringify({ projects: [...this.projects.values()], tasks: [...this.tasks.values()] })); },
+  loadCache() {
+    if (!this.token) return;
+    try { const raw = JSON.parse(ls.get(LS_KEY) || '{}'); if (!raw.projects) return; this.projects = new Map(raw.projects.map(p => [p.id, p])); this.tasks = new Map(raw.tasks.map(t => [t.id, t])); this.me = raw.me || null; this.ready = true; this.mode = 'server'; } catch {}
+  },
+  saveCache() { ls.set(LS_KEY, JSON.stringify({ me: this.me, projects: [...this.projects.values()], tasks: [...this.tasks.values()] })); },
   write(kind, obj, del) {
     const id = obj.id;
     if (del) this[kind].delete(id); else this[kind].set(id, obj);
-    render(); this.saveLocal();
-    if (this.mode !== 'tg') return;
-    const key = ckey(kind, id);
-    const val = del ? null : JSON.stringify(obj);
-    if (val && val.length > MAX_VAL) { toast('Задача слишком большая для облака Telegram (лимит 4096 символов). Сократите описание или чек-лист.'); return; }
-    this.pending.set(key, val);
+    this.writeSeq++; render();
+    const key = kind + '/' + id;
+    this.pending.set(key, del ? null : obj);
     if (this.running.has(key)) return;
     this.running.add(key);
     (async () => {
       while (this.pending.has(key)) {
-        const v = this.pending.get(key); this.pending.delete(key);
-        try { if (v) await cs('setItem', key, v); else await cs('removeItem', key); }
-        catch (e) { toast(String(e).includes('KEYS_TOO_MUCH') || String(e).includes('QUOTA') ? 'Облако Telegram заполнено (до 1024 записей). Удалите старые задачи.' : 'Изменение не сохранилось в облаке. Проверьте интернет.'); }
+        const d = this.pending.get(key); this.pending.delete(key);
+        try { if (d) await this.api('PUT', `/api/${kind}/${id}`, { data: d }); else await this.api('DELETE', `/api/${kind}/${id}`); }
+        catch (e) { toast(e.status ? e.message : 'Изменение не сохранилось: нет связи с сервером.'); this.running.delete(key); this.pull(true); return; }
       }
-      this.running.delete(key);
+      this.running.delete(key); this.saveCache();
     })();
   },
   saveProject(p) { this.write('projects', p); },
   saveTask(t) { t.updatedAt = Date.now(); this.write('tasks', t); },
   delTask(t) { this.write('tasks', t, true); },
-  delProject(p) { for (const t of this.tasksOf(p.id)) this.delTask(t); this.write('projects', p, true); },
+  delProject(p) { for (const t of this.tasksOf(p.id)) this.tasks.delete(t.id); this.write('projects', p, true); },
   projectList() { return [...this.projects.values()].sort((a, b) => (a.order ?? 0) - (b.order ?? 0)); },
-  tasksOf(pid) { return [...this.tasks.values()].filter(t => t.projectId === pid); }
+  tasksOf(pid) { return [...this.tasks.values()].filter(t => t.projectId === pid); },
+  isOwner(p) { return !p.role || p.role === 'owner'; }
 };
 
 /* ---------- ui state ---------- */
@@ -330,21 +379,35 @@ function render() { renderSide(); renderMain(); if (ui.openTask) refreshTaskModa
 function renderSide() {
   const side = $('#side'); const p = curProject();
   const list = store.projectList();
+  const loggedIn = store.mode === 'server';
   side.replaceChildren(
     h('div', { class: 'brand' }, h('i', null, 'П'), 'Планка'),
-    h('div', { class: 'side-label' }, svg(IC.folder, 18), h('span', { class: 'lbl' }, 'Мои проекты'),
-      h('button', { class: 'ibtn', title: 'Новый проект', 'aria-label': 'Новый проект', onclick: openNewProject }, svg(IC.plus, 18))),
+    loggedIn ? h('div', { class: 'side-label' }, svg(IC.folder, 18), h('span', { class: 'lbl' }, 'Мои проекты'),
+      h('button', { class: 'ibtn', title: 'Новый проект', 'aria-label': 'Новый проект', onclick: openNewProject }, svg(IC.plus, 18))) : null,
     h('nav', { class: 'plist', 'aria-label': 'Проекты' }, list.map(pr => {
       const cols = new Set((pr.columns || []).filter(c => c.done).map(c => c.id));
       const open = store.tasksOf(pr.id).filter(t => !cols.has(t.columnId)).length;
       const on = p && pr.id === p.id;
+      const shared = (pr.members || []).length > 1;
       return h('button', { class: 'pitem' + (on ? ' on' : ''), onclick: () => selectProject(pr.id), 'aria-current': on ? 'page' : null },
-        h('span', { class: 'nm' }, pr.name), h('span', { class: 'ct', title: 'Открытых задач' }, open || ''));
+        h('span', { class: 'nm' }, pr.name), shared ? h('span', { class: 'ct', title: `Участников: ${pr.members.length}` }, svg(IC.users, 14)) : null, h('span', { class: 'ct', title: 'Открытых задач' }, open || ''));
     })),
-    store.mode === 'loading' ? null : h('div', { class: 'store-note' + (store.mode === 'local' ? ' local' : '') },
-      store.mode === 'tg' ? 'Сохраняется в облаке Telegram: задачи видны на всех ваших устройствах.' : 'Открыто вне Telegram: задачи сохраняются только в этом браузере.')
+    loggedIn && store.me ? h('div', { class: 'store-note' },
+      h('span', { style: 'flex:1;min-width:0' }, store.me.name, store.me.username ? h('span', { style: 'display:block' }, '@' + store.me.username) : null),
+      inTg ? null : h('button', { class: 'linkbtn', onclick: () => { store.api('POST', '/api/logout').catch(() => {}); store.logout(); } }, 'Выйти')) : null
   );
 }
+
+function renderLogin(main) {
+  const l = store.login;
+  main.replaceChildren(store.banner ? h('div', { class: 'banner', style: 'margin-top:16px' }, store.banner) : null, h('div', { class: 'empty' },
+    h('div', { class: 'ghostboard', 'aria-hidden': 'true' }, [[3, COLORS[0]], [2, COLORS[1]], [1, COLORS[3]]].map(([n, c]) => h('div', { style: `--c:${c}` }, Array.from({ length: n }, () => h('span'))))),
+    h('h2', null, ui.join ? 'Вас пригласили в проект' : 'Вход в Планку'),
+    h('p', null, 'Войдите через Telegram: откроется бот, нажмите «Старт», и задачи появятся здесь. Это тот же аккаунт, что и в мини-приложении.'),
+    l ? h('a', { class: 'btn primary', href: l.url, target: '_blank', rel: 'noopener' }, svg(IC.send, 16), 'Войти через Telegram') : h('p', null, 'Готовлю ссылку для входа…'),
+    l ? h('p', { style: 'font-size:12px' }, 'Жду подтверждения в Telegram…') : null));
+}
+
 
 function renderMain() {
   const main = $('#main');
@@ -352,6 +415,7 @@ function renderMain() {
   const colScroll = {}; main.querySelectorAll('.cards').forEach(c => colScroll[c.dataset.col] = c.scrollTop);
   const focusedQA = document.activeElement && document.activeElement.id === 'qa-input' ? document.activeElement.value : null;
   const p = curProject();
+  if (store.mode === 'login') { renderLogin(main); return; }
   if (!store.ready) { main.replaceChildren(h('div', { class: 'empty' }, h('p', null, 'Загружаю доску…'))); return; }
   if (!p) {
     main.replaceChildren(store.banner ? h('div', { class: 'banner', style: 'margin-top:16px' }, store.banner) : null, h('div', { class: 'empty' },
@@ -445,7 +509,6 @@ function createTask(p, colId, title) {
   const inCol = tasks.filter(t => t.columnId === colId);
   const order = inCol.reduce((m, t) => Math.min(m, t.order || 0), 1000) - 1000;
   store.saveTask({ id: uid(), projectId: p.id, columnId: colId, num, title, desc: '', priority: 0, due: '', checklist: [], order, createdAt: Date.now() });
-  store.saveProject({ ...store.projects.get(p.id), lastNum: num });
 }
 
 /* ---------- drag and drop ---------- */
@@ -616,10 +679,29 @@ function openNewProject() {
 }
 
 function openProjectSettings(p) {
+  const owner = store.isOwner(p);
   const st = { name: p.name, key: p.key, color: p.color };
   const delZone = h('div');
+  const inviteBox = h('div', { class: 'invite' });
   const n = store.tasksOf(p.id).length;
   const submit = e => { e.preventDefault(); const cur = store.projects.get(p.id); store.saveProject({ ...cur, name: st.name.trim() || cur.name, key: (st.key.trim() || cur.key).toUpperCase().slice(0, 6), color: st.color }); closeModal(); };
+  const makeInvite = async () => {
+    inviteBox.replaceChildren(h('span', { class: 'sec-l' }, 'Создаю ссылку…'));
+    try {
+      const { url } = await store.api('POST', `/api/projects/${p.id}/invites`);
+      const inp = h('input', { class: 'inp', id: 'inv-url', readonly: true, value: url, onfocus: e => e.target.select() });
+      const copyBtn = h('button', { type: 'button', class: 'btn', onclick: async () => { try { await navigator.clipboard.writeText(url); copyBtn.textContent = 'Скопировано'; } catch { inp.focus(); inp.select(); toast('Скопируйте выделенную ссылку вручную.'); } } }, 'Копировать');
+      inviteBox.replaceChildren(
+        h('div', { class: 'inv-row' }, inp, copyBtn),
+        inTg ? h('button', { type: 'button', class: 'btn', onclick: () => tg.openTelegramLink('https://t.me/share/url?url=' + encodeURIComponent(url) + '&text=' + encodeURIComponent(`Приглашение в проект «${p.name}»`)) }, svg(IC.send, 15), 'Отправить в Telegram') : null,
+        h('span', { class: 'sec-l' }, 'Ссылка сработает для одного человека. Каждому участнику нужна своя.'));
+    } catch (e) { inviteBox.replaceChildren(h('span', { class: 'sec-l', style: 'color:var(--danger)' }, e.message)); }
+  };
+  const removeMember = async (m, self) => {
+    try { await store.api('DELETE', `/api/projects/${p.id}/members/${m.id}`); closeModal(); if (self) { ui.pid = null; } await store.pull(true); toast(self ? 'Вы вышли из проекта.' : `${m.name} больше не в проекте.`); }
+    catch (e) { toast(e.message); }
+  };
+  const members = (p.members || []).slice().sort((a, b) => (a.role === 'owner' ? -1 : 0) - (b.role === 'owner' ? -1 : 0));
   openModal(h('form', { onsubmit: submit },
     h('div', { class: 'm-head' }, h('h2', null, 'Настройки проекта'), h('button', { type: 'button', class: 'ibtn', 'aria-label': 'Закрыть', onclick: closeModal }, svg(IC.x))),
     h('div', { class: 'm-body' },
@@ -627,11 +709,23 @@ function openProjectSettings(p) {
         h('div', { class: 'field' }, h('label', { for: 'ps-name' }, 'Название'), h('input', { class: 'inp', id: 'ps-name', value: st.name, oninput: e => st.name = e.target.value })),
         h('div', { class: 'field' }, h('label', { for: 'ps-key' }, 'Код задач'), h('input', { class: 'inp', id: 'ps-key', maxlength: 6, value: st.key, oninput: e => st.key = e.target.value }))),
       h('div', { class: 'field' }, h('span', { class: 'sec-l' }, 'Цвет'), colorPicker(st.color, c => st.color = c)),
+      h('div', { class: 'field' }, h('span', { class: 'sec-l' }, 'Участники'),
+        h('div', { class: 'members' }, members.map(m => {
+          const isMe = store.me && m.id === store.me.id;
+          return h('div', { class: 'mem' },
+            h('span', { class: 'ava', style: `--c:${COLORS[Math.abs(m.id) % COLORS.length]}` }, (m.name || '?').slice(0, 1).toUpperCase()),
+            h('span', { class: 'mem-n' }, m.name + (isMe ? ' (вы)' : ''), m.username ? h('small', null, '@' + m.username) : null),
+            m.role === 'owner' ? h('span', { class: 'role' }, 'владелец')
+              : isMe ? h('button', { type: 'button', class: 'linkbtn red', onclick: () => removeMember(m, true) }, 'Выйти из проекта')
+              : owner ? h('button', { type: 'button', class: 'linkbtn red', onclick: () => removeMember(m, false) }, 'Удалить') : null);
+        })),
+        owner ? h('button', { type: 'button', class: 'btn', style: 'align-self:flex-start', onclick: makeInvite }, svg(IC.plus, 15), 'Пригласить по ссылке') : null,
+        inviteBox),
       delZone),
     h('div', { class: 'm-foot' },
-      h('button', { type: 'button', class: 'btn danger', onclick: () => delZone.replaceChildren(h('div', { class: 'confirm' }, `Удалить проект «${p.name}» и ${n} ${plural(n, 'задачу', 'задачи', 'задач')}? Это нельзя отменить.`,
+      owner ? h('button', { type: 'button', class: 'btn danger', onclick: () => delZone.replaceChildren(h('div', { class: 'confirm' }, `Удалить проект «${p.name}» и ${n} ${plural(n, 'задачу', 'задачи', 'задач')} у всех участников? Это нельзя отменить.`,
         h('div', { class: 'row' }, h('button', { type: 'button', class: 'btn ghost', onclick: () => delZone.replaceChildren() }, 'Отмена'),
-          h('button', { type: 'button', class: 'btn danger', onclick: () => { store.delProject(store.projects.get(p.id)); closeModal(); ui.pid = null; render(); } }, 'Удалить навсегда')))) }, svg(IC.trash, 15), 'Удалить проект'),
+          h('button', { type: 'button', class: 'btn danger', onclick: () => { store.delProject(store.projects.get(p.id)); closeModal(); ui.pid = null; render(); } }, 'Удалить навсегда')))) }, svg(IC.trash, 15), 'Удалить проект') : h('span'),
       h('button', { class: 'btn primary', type: 'submit' }, 'Сохранить'))), 'sm');
 }
 
